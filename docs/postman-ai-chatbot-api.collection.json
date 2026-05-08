@@ -1,0 +1,317 @@
+{
+  "info": {
+    "name": "AI Employee Support Bot SaaS API",
+    "description": "Postman collection for testing the central bot chat flow. Import this collection together with docs/postman-local.environment.json, then fill central_bot_secret and company_code.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Central Bot Flow",
+      "item": [
+        {
+          "name": "1. Register LINE User With Company Code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-central-bot-secret",
+                "value": "{{central_bot_secret}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"line_user_id\": \"{{line_user_id}}\",\n  \"channel\": \"{{channel}}\",\n  \"company_code\": \"{{company_code}}\",\n  \"display_name\": \"Postman Test User\",\n  \"metadata\": {\n    \"source\": \"postman\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/register",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "register"
+              ]
+            },
+            "description": "Links a LINE/external user id to a tenant using the tenant company code. Run this once before normal chat, or include company_code in the first chat request."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('register response is successful', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "  const json = pm.response.json();",
+                  "  pm.environment.set('tenant_id', json.tenant_id);",
+                  "  pm.environment.set('external_user_id', json.external_user_id);",
+                  "  pm.environment.set('link_id', json.link_id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. V2 Chat - Simplified (user_id, message, company_code)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-central-bot-secret",
+                "value": "{{central_bot_secret}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"{{external_user_id}}\",\n  \"message\": \"อยากคุยด้วย\",\n  \"company_code\": \"{{company_code}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v2/chat",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "chat"
+              ]
+            },
+            "description": "New simplified endpoint. Backend resolves tenant by company_code, uses tenant settings/context, and logs usage/quota against that tenant."
+          }
+        },
+        {
+          "name": "2. Chat - First Call With Company Code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-central-bot-secret",
+                "value": "{{central_bot_secret}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"external_user_id\": \"{{external_user_id}}\",\n  \"channel\": \"{{channel}}\",\n  \"company_code\": \"{{company_code}}\",\n  \"conversation_id\": \"postman-conversation-1\",\n  \"message\": \"สวัสดิการประกันสุขภาพมีอะไรบ้าง\",\n  \"metadata\": {\n    \"line_user_id\": \"{{line_user_id}}\",\n    \"source\": \"postman\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/chat",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "chat"
+              ]
+            },
+            "description": "Use this when the employee has not been linked yet. The backend will resolve the tenant from company_code, create the employee link, then answer the chat."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('chat returns JSON', function () {",
+                  "  pm.response.to.have.header('Content-Type');",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "  const json = pm.response.json();",
+                  "  pm.test('chat has reply', function () {",
+                  "    pm.expect(json).to.have.property('reply');",
+                  "  });",
+                  "  if (json.conversation_id) pm.environment.set('conversation_id', json.conversation_id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Chat - Linked User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-central-bot-secret",
+                "value": "{{central_bot_secret}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"external_user_id\": \"{{external_user_id}}\",\n  \"channel\": \"{{channel}}\",\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"message\": \"ลาป่วยได้กี่วัน\",\n  \"metadata\": {\n    \"line_user_id\": \"{{line_user_id}}\",\n    \"source\": \"postman\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/chat",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "chat"
+              ]
+            },
+            "description": "Normal chat after the user is already linked. Do not send tenant_id from the bot; backend resolves tenant from external_user_id + channel."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('chat succeeded', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('chat response shape', function () {",
+                  "  pm.expect(json).to.have.property('success');",
+                  "  pm.expect(json).to.have.property('reply');",
+                  "  pm.expect(json).to.have.property('quota');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4. Get Tenant Bot Config",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-central-bot-secret",
+                "value": "{{central_bot_secret}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/config?external_user_id={{external_user_id}}&channel={{channel}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "config"
+              ],
+              "query": [
+                {
+                  "key": "external_user_id",
+                  "value": "{{external_user_id}}"
+                },
+                {
+                  "key": "channel",
+                  "value": "{{channel}}"
+                }
+              ]
+            },
+            "description": "Returns tenant company name, bot name, default language, feature flags, and message limit."
+          }
+        },
+        {
+          "name": "5. Get Tenant Usage",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-central-bot-secret",
+                "value": "{{central_bot_secret}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/usage?external_user_id={{external_user_id}}&channel={{channel}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "usage"
+              ],
+              "query": [
+                {
+                  "key": "external_user_id",
+                  "value": "{{external_user_id}}"
+                },
+                {
+                  "key": "channel",
+                  "value": "{{channel}}"
+                }
+              ]
+            },
+            "description": "Returns current monthly usage, remaining messages, and estimated cost for the resolved tenant."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Legacy API Key Flow",
+      "item": [
+        {
+          "name": "Health Check With Legacy API Key",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{legacy_api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "health"
+              ]
+            },
+            "description": "Legacy tenant-key health check. The normal central LINE bot flow should use x-central-bot-secret instead."
+          }
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.environment.get('external_user_id')) {",
+          "  pm.environment.set('external_user_id', pm.environment.get('line_user_id') || 'postman-line-user-001');",
+          "}",
+          "if (!pm.environment.get('conversation_id')) {",
+          "  pm.environment.set('conversation_id', 'postman-conversation-1');",
+          "}"
+        ]
+      }
+    }
+  ]
+}

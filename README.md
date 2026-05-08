@@ -107,6 +107,39 @@ Open:
 - Platform dashboard: `http://localhost:4000/platform`
 - Company dashboard: `http://localhost:4000/dashboard`
 
+## API Documentation
+
+Swagger/OpenAPI documentation is available at `docs/openapi.yaml`.
+A PDF export for sharing with the integration team is available at `docs/api-documentation.pdf`.
+
+Use it with Swagger Editor, Swagger UI, Postman, Insomnia, or any OpenAPI-compatible client generator. The spec covers:
+
+- Bot-facing APIs: `/api/v1/register`, `/api/v1/chat`, `/api/v2/chat`, `/api/v1/config`, `/api/v1/usage`, `/api/v1/health`
+- Central bot auth via `x-central-bot-secret`
+- Legacy tenant API key auth via `x-api-key`
+- Admin APIs for tenant management, AI settings, documents, playground, and legacy API keys
+- Main request/response schemas and shared error formats
+
+Postman import files are also available:
+
+- Collection: `docs/postman-ai-chatbot-api.collection.json`
+- Local environment template: `docs/postman-local.environment.json`
+
+To test chat in Postman:
+
+1. Import both files into Postman.
+2. Select the `AI Employee Support Bot - Local` environment.
+3. Set `central_bot_secret` from `.env.local` (`CENTRAL_BOT_SECRET`).
+4. Set `company_code` from the tenant detail page in Platform Admin.
+5. Run `1. Register LINE User With Company Code`.
+6. Run `3. Chat - Linked User` to test normal chat.
+
+For a simplified integration flow, use `/api/v2/chat` with only:
+
+- `user_id`
+- `message`
+- `company_code`
+
 ## Environment Variables
 
 Required for a real Supabase/OpenAI environment:

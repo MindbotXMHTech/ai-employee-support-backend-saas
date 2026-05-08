@@ -1,0 +1,1252 @@
+openapi: 3.0.3
+info:
+  title: AI Employee Support Bot SaaS API
+  version: 1.0.0
+  description: |
+    API documentation for the multi-tenant employee support bot backend.
+
+    The intended production integration is a central LINE bot or legacy bot
+    backend calling the bot-facing `/api/v1/*` endpoints with
+    `x-central-bot-secret`.
+
+    Tenant-specific admin operations are protected by Supabase Auth session
+    cookies and role checks.
+servers:
+  - url: http://localhost:4000
+    description: Local development
+  - url: https://your-platform-domain.example
+    description: Production
+tags:
+  - name: Bot API
+    description: Endpoints called by the central bot backend.
+  - name: Admin - Setup
+    description: Initial platform admin setup.
+  - name: Admin - Tenants
+    description: Platform admin tenant management.
+  - name: Admin - AI Settings
+    description: Platform-admin managed AI settings.
+  - name: Admin - Documents
+    description: RAG knowledge base document management.
+  - name: Admin - Playground
+    description: RAG playground testing.
+  - name: Admin - API Keys
+    description: Legacy tenant API key management.
+
+security:
+  - CentralBotSecret: []
+
+paths:
+  /api/v1/health:
+    get:
+      tags: [Bot API]
+      summary: Health check
+      description: Legacy tenant API-key health check. Central bot integrations normally call `/api/v1/config` or `/api/v1/usage` for tenant-aware checks.
+      security:
+        - LegacyApiKey: []
+      responses:
+        "200":
+          description: Service health response.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/v1/register:
+    post:
+      tags: [Bot API]
+      summary: Register a LINE user or external user to a tenant using company code
+      description: |
+        Use when an employee first enters a tenant company code. Stores a link
+        from `external_user_id + channel` to `tenant_id`.
+      security:
+        - CentralBotSecret: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterUserRequest"
+            examples:
+              line:
+                value:
+                  line_user_id: Uxxxxxxxxxxxxxxxx
+                  channel: line
+                  company_code: ABC123
+                  display_name: Somchai
+      responses:
+        "200":
+          description: User successfully linked to tenant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterUserResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Invalid or revoked company code.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error:
+                  code: INVALID_COMPANY_CODE
+                  message: Invalid or revoked company code.
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/chat:
+    post:
+      tags: [Bot API]
+      summary: Send an employee message to AI/RAG orchestration
+      description: |
+        Main API for central LINE bot integration.
+
+        If the user is not linked yet, send `company_code` together with the
+        first message. The backend will link the user and answer in the same call.
+
+        If the user is already linked, `external_user_id + channel` is enough.
+      security:
+        - CentralBotSecret: []
+        - LegacyApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatRequest"
+            examples:
+              afterRegistration:
+                value:
+                  external_user_id: legacy-user-uuid
+                  channel: line
+                  conversation_id: line-user-or-room-id
+                  message: ลาป่วยได้กี่วัน
+                  metadata:
+                    line_user_id: Uxxxxxxxxxxxxxxxx
+                    source: legacy-line-bot
+              firstCallWithCompanyCode:
+                value:
+                  external_user_id: legacy-user-uuid
+                  channel: line
+                  company_code: ABC123
+                  message: สวัสดิการประกันสุขภาพมีอะไรบ้าง
+      responses:
+        "200":
+          description: Successful AI response, quota message, or bot-friendly registration prompt.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ChatSuccessResponse"
+                  - $ref: "#/components/schemas/ChatNeedCompanyCodeResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v2/chat:
+    post:
+      tags: [Bot API]
+      summary: Simplified central bot chat (user_id, message, company_code)
+      description: |
+        Simplified endpoint for central bot integrations.
+
+        Request requires only `user_id`, `message`, and `company_code`.
+        Backend resolves tenant from `company_code`, upserts user-to-tenant link,
+        then runs the same AI orchestration pipeline (RAG/safety/quota/usage cost logging).
+      security:
+        - CentralBotSecret: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatV2Request"
+            example:
+              user_id: "111"
+              message: อยากคุยด้วย
+              company_code: ABC503
+      responses:
+        "200":
+          description: Successful AI response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatSuccessResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Invalid or revoked company code.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error:
+                  code: INVALID_COMPANY_CODE
+                  message: Invalid or revoked company code.
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/config:
+    get:
+      tags: [Bot API]
+      summary: Get resolved tenant bot configuration
+      description: Resolve tenant from central bot secret and external user id, then return display config and feature flags.
+      security:
+        - CentralBotSecret: []
+        - LegacyApiKey: []
+      parameters:
+        - $ref: "#/components/parameters/ExternalUserId"
+        - $ref: "#/components/parameters/Channel"
+        - $ref: "#/components/parameters/CompanyCode"
+      responses:
+        "200":
+          description: Tenant bot config.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotConfigResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/TenantNotResolved"
+
+  /api/v1/usage:
+    get:
+      tags: [Bot API]
+      summary: Get current tenant usage and quota
+      security:
+        - CentralBotSecret: []
+        - LegacyApiKey: []
+      parameters:
+        - $ref: "#/components/parameters/ExternalUserId"
+        - $ref: "#/components/parameters/Channel"
+        - $ref: "#/components/parameters/CompanyCode"
+      responses:
+        "200":
+          description: Tenant usage summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/TenantNotResolved"
+
+  /api/setup/platform-admin:
+    post:
+      tags: [Admin - Setup]
+      summary: Create the initial platform admin and temporary password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, display_name]
+              properties:
+                email:
+                  type: string
+                  format: email
+                display_name:
+                  type: string
+      responses:
+        "200":
+          description: Platform admin created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  appUser:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      email:
+                        type: string
+                        format: email
+                      display_name:
+                        type: string
+                      role:
+                        type: string
+                        enum: [platform_admin]
+                  temporaryPassword:
+                    type: string
+                    description: Generated password returned once.
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          description: Platform admin already exists.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Platform admin already exists.
+
+  /api/admin/tenants:
+    post:
+      tags: [Admin - Tenants]
+      summary: Create tenant, company admin, company code, and tenant defaults
+      security:
+        - SupabaseSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTenantRequest"
+      responses:
+        "200":
+          description: Tenant onboarding result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateTenantResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/admin/tenants/{tenant_id}:
+    patch:
+      tags: [Admin - Tenants]
+      summary: Update tenant plan/status/limits
+      security:
+        - SupabaseSession: []
+      parameters:
+        - $ref: "#/components/parameters/TenantIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTenantRequest"
+      responses:
+        "200":
+          description: Updated tenant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    delete:
+      tags: [Admin - Tenants]
+      summary: Delete tenant and cascaded tenant data
+      description: |
+        Platform Admin only. Deletes tenant, tenant-scoped relational data, RAG files,
+        and company admin auth users that are not members of any other tenant.
+      security:
+        - SupabaseSession: []
+      parameters:
+        - $ref: "#/components/parameters/TenantIdPath"
+      responses:
+        "200":
+          description: Tenant deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, tenant]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  tenant:
+                    $ref: "#/components/schemas/Tenant"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Tenant not found.
+
+  /api/admin/tenants/{tenant_id}/ai-settings:
+    patch:
+      tags: [Admin - AI Settings]
+      summary: Update per-tenant AI settings
+      description: Platform Admin only. Company Admin cannot edit or see model/system-instruction settings.
+      security:
+        - SupabaseSession: []
+      parameters:
+        - $ref: "#/components/parameters/TenantIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TenantAiSettingsRequest"
+      responses:
+        "200":
+          description: Updated bot settings row.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantAiSettings"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/admin/documents:
+    post:
+      tags: [Admin - Documents]
+      summary: Upload and process a RAG knowledge base document
+      description: |
+        Accepts PDF, DOCX, TXT, or Markdown. Creates document record, uploads raw
+        file to Supabase Storage, extracts/chunks text, creates embeddings, and
+        stores vectors in `document_chunks`.
+      security:
+        - SupabaseSession: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/DocumentUploadRequest"
+      responses:
+        "200":
+          description: Uploaded and processed document.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [document, processing]
+                properties:
+                  document:
+                    $ref: "#/components/schemas/Document"
+                  processing:
+                    type: object
+                    properties:
+                      chunks:
+                        type: integer
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/admin/documents/{document_id}:
+    delete:
+      tags: [Admin - Documents]
+      summary: Delete RAG document
+      security:
+        - SupabaseSession: []
+      parameters:
+        - name: document_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Document deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Document not found.
+
+  /api/admin/playground:
+    post:
+      tags: [Admin - Playground]
+      summary: Test RAG answer for a tenant
+      security:
+        - SupabaseSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlaygroundRequest"
+      responses:
+        "200":
+          description: Playground RAG response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaygroundResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+
+  /api/admin/api-keys:
+    post:
+      tags: [Admin - API Keys]
+      summary: Create legacy tenant API key
+      description: Legacy compatibility only. Central LINE bot should use `x-central-bot-secret`.
+      security:
+        - SupabaseSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenant_id, name]
+              properties:
+                tenant_id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+                  maxLength: 100
+      responses:
+        "200":
+          description: Created API key. Raw key is returned once.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+
+  /api/admin/api-keys/{api_key_id}:
+    delete:
+      tags: [Admin - API Keys]
+      summary: Revoke legacy tenant API key
+      security:
+        - SupabaseSession: []
+      parameters:
+        - name: api_key_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: API key revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+
+  /api/admin/platform-ai-settings:
+    patch:
+      tags: [Admin - AI Settings]
+      summary: Update legacy/global platform AI fallback settings
+      description: |
+        This route is retained as a fallback/default settings endpoint. Current
+        product behavior is per-tenant AI settings managed from
+        `/platform/tenants/{tenant_id}/ai-settings`.
+      security:
+        - SupabaseSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TenantAiSettingsRequest"
+      responses:
+        "200":
+          description: Updated platform bot settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantAiSettings"
+        "401":
+          $ref: "#/components/responses/AdminUnauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+components:
+  securitySchemes:
+    CentralBotSecret:
+      type: apiKey
+      in: header
+      name: x-central-bot-secret
+      description: Shared secret used by the trusted central LINE bot backend.
+    LegacyApiKey:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: Legacy tenant API key. Not recommended for central LINE bot integration.
+    SupabaseSession:
+      type: apiKey
+      in: cookie
+      name: sb-access-token
+      description: Supabase Auth browser session cookies. Actual cookie names depend on Supabase SSR configuration.
+
+  parameters:
+    ExternalUserId:
+      name: external_user_id
+      in: query
+      required: true
+      schema:
+        type: string
+        maxLength: 255
+      description: Stable external user id, normally LINE user id or legacy user UUID.
+    Channel:
+      name: channel
+      in: query
+      required: false
+      schema:
+        type: string
+        default: line
+      description: Source channel. Use `line` for LINE bot integration.
+    CompanyCode:
+      name: company_code
+      in: query
+      required: false
+      schema:
+        type: string
+        maxLength: 64
+      description: Tenant company code. Needed if user is not linked yet.
+    TenantIdPath:
+      name: tenant_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid bot secret/API key.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            success: false
+            error:
+              code: INVALID_API_KEY
+              message: Invalid central bot secret.
+    AdminUnauthorized:
+      description: Missing admin session.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Authentication required.
+    Forbidden:
+      description: Authenticated user does not have permission.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Platform admin required.
+    ValidationError:
+      description: Invalid request payload.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: "#/components/schemas/ErrorResponse"
+              - type: object
+                properties:
+                  error:
+                    type: string
+          example:
+            success: false
+            error:
+              code: VALIDATION_ERROR
+              message: Invalid request body.
+    InternalError:
+      description: Internal server error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            success: false
+            error:
+              code: INTERNAL_ERROR
+              message: Internal server error.
+    TenantNotResolved:
+      description: User could not be resolved to tenant.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            success: false
+            error:
+              code: TENANT_NOT_RESOLVED
+              message: Company code is required for this employee.
+
+  schemas:
+    RegisterUserRequest:
+      type: object
+      required: [company_code]
+      properties:
+        external_user_id:
+          type: string
+          maxLength: 255
+          description: Stable external user id. Either this or `line_user_id` is required.
+        line_user_id:
+          type: string
+          maxLength: 255
+          description: LINE user id. Either this or `external_user_id` is required.
+        channel:
+          type: string
+          default: line
+          maxLength: 64
+        company_code:
+          type: string
+          maxLength: 64
+        display_name:
+          type: string
+          maxLength: 255
+        metadata:
+          type: object
+          additionalProperties: true
+
+    RegisterUserResponse:
+      type: object
+      required: [success, tenant_id, tenant_name, link_id, external_user_id, channel]
+      properties:
+        success:
+          type: boolean
+          example: true
+        tenant_id:
+          type: string
+          format: uuid
+        tenant_name:
+          type: string
+        link_id:
+          type: string
+          format: uuid
+        external_user_id:
+          type: string
+        channel:
+          type: string
+          example: line
+
+    ChatRequest:
+      type: object
+      required: [external_user_id, message]
+      properties:
+        external_user_id:
+          type: string
+          maxLength: 255
+          description: Stable user id from LINE or legacy system.
+        channel:
+          type: string
+          default: api
+          maxLength: 64
+        message:
+          type: string
+          minLength: 1
+          maxLength: 8000
+        company_code:
+          type: string
+          maxLength: 64
+          description: Optional. Used to link user to tenant if not linked yet.
+        conversation_id:
+          type: string
+          maxLength: 255
+        bot_id:
+          type: string
+          format: uuid
+          deprecated: true
+          description: Legacy field. Current runtime uses tenant AI settings.
+        metadata:
+          type: object
+          additionalProperties: true
+
+    ChatV2Request:
+      type: object
+      required: [user_id, message, company_code]
+      properties:
+        user_id:
+          type: string
+          maxLength: 255
+          description: External user id from the central bot or legacy system.
+        message:
+          type: string
+          minLength: 1
+          maxLength: 8000
+        company_code:
+          type: string
+          maxLength: 64
+
+    ChatSuccessResponse:
+      type: object
+      required:
+        - success
+        - reply
+        - message_type
+        - safety_level
+        - conversation_id
+        - sources
+        - handoff_required
+        - handoff
+        - quota
+      properties:
+        success:
+          type: boolean
+          example: true
+        reply:
+          type: string
+        message_type:
+          type: string
+          enum: [general, rag, mental_health, safety, crisis, out_of_scope, quota_exceeded]
+        safety_level:
+          type: string
+          enum: [normal, medium, high, crisis]
+        conversation_id:
+          type: string
+          format: uuid
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourceDocument"
+        handoff_required:
+          type: boolean
+        handoff:
+          $ref: "#/components/schemas/Handoff"
+        quota:
+          $ref: "#/components/schemas/QuotaSnapshot"
+        debug:
+          type: object
+          additionalProperties: true
+
+    ChatNeedCompanyCodeResponse:
+      type: object
+      required: [success, reply, message_type, safety_level, conversation_id, sources, handoff_required, handoff, quota]
+      properties:
+        success:
+          type: boolean
+          example: true
+        reply:
+          type: string
+          example: กรุณาลงทะเบียนด้วยรหัสบริษัทก่อนใช้งานครับ เพื่อให้ผมผูกบัญชี LINE ของคุณกับบริษัทที่ถูกต้อง
+        message_type:
+          type: string
+          enum: [out_of_scope]
+        safety_level:
+          type: string
+          enum: [normal]
+        conversation_id:
+          type: string
+          example: ""
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourceDocument"
+        handoff_required:
+          type: boolean
+          example: false
+        handoff:
+          $ref: "#/components/schemas/Handoff"
+        quota:
+          $ref: "#/components/schemas/QuotaSnapshot"
+
+    SourceDocument:
+      type: object
+      properties:
+        document_name:
+          type: string
+        category:
+          type: string
+          nullable: true
+          enum: [benefits, welfare, leave_policy, insurance, hr_faq, other, null]
+        section:
+          type: string
+          nullable: true
+        score:
+          type: number
+          format: float
+
+    Handoff:
+      type: object
+      required: [enabled, url, button_text, message]
+      properties:
+        enabled:
+          type: boolean
+        url:
+          type: string
+          nullable: true
+        button_text:
+          type: string
+          nullable: true
+        message:
+          type: string
+          nullable: true
+
+    QuotaSnapshot:
+      type: object
+      required: [plan, used, limit, remaining]
+      properties:
+        plan:
+          type: string
+          enum: [trial, pro]
+        used:
+          type: integer
+        limit:
+          type: integer
+        remaining:
+          type: integer
+
+    BotConfigResponse:
+      type: object
+      properties:
+        company_name:
+          type: string
+        bot_name:
+          type: string
+        default_language:
+          type: string
+          enum: [th, en, "th,en"]
+        features:
+          type: object
+          properties:
+            rag_enabled:
+              type: boolean
+            mental_health_enabled:
+              type: boolean
+            safety_enabled:
+              type: boolean
+            handoff_enabled:
+              type: boolean
+        limits:
+          type: object
+          properties:
+            plan:
+              type: string
+              enum: [trial, pro]
+            message_limit:
+              type: integer
+
+    UsageResponse:
+      type: object
+      properties:
+        plan:
+          type: string
+          enum: [trial, pro]
+        status:
+          type: string
+          enum: [active, suspended, expired]
+        messages_used:
+          type: integer
+        messages_limit:
+          type: integer
+        messages_remaining:
+          type: integer
+        estimated_cost_usd:
+          type: number
+
+    Tenant:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        plan:
+          type: string
+          enum: [trial, pro]
+        status:
+          type: string
+          enum: [active, suspended, expired]
+        monthly_message_limit:
+          type: integer
+        storage_limit_mb:
+          type: integer
+        max_files:
+          type: integer
+        max_bots:
+          type: integer
+        trial_started_at:
+          type: string
+          nullable: true
+        trial_ends_at:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          nullable: true
+
+    CreateTenantRequest:
+      type: object
+      required: [name, plan, admin_email, admin_display_name]
+      properties:
+        name:
+          type: string
+        plan:
+          type: string
+          enum: [trial, pro]
+        industry:
+          type: string
+        company_description:
+          type: string
+        hr_contact_name:
+          type: string
+        hr_contact_email:
+          type: string
+          format: email
+        admin_email:
+          type: string
+          format: email
+        admin_display_name:
+          type: string
+
+    CreateTenantResponse:
+      type: object
+      properties:
+        tenant:
+          $ref: "#/components/schemas/Tenant"
+        adminUser:
+          type: object
+          properties:
+            email:
+              type: string
+              format: email
+            display_name:
+              type: string
+              nullable: true
+        companyCode:
+          type: object
+          properties:
+            code:
+              type: string
+        temporaryPassword:
+          type: string
+          description: Returned once for onboarding.
+
+    UpdateTenantRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        plan:
+          type: string
+          enum: [trial, pro]
+        status:
+          type: string
+          enum: [active, suspended, expired]
+        monthly_message_limit:
+          type: integer
+          minimum: 1
+        storage_limit_mb:
+          type: integer
+          minimum: 1
+        max_files:
+          type: integer
+          minimum: 1
+        max_bots:
+          type: integer
+          minimum: 1
+
+    TenantAiSettingsRequest:
+      type: object
+      required:
+        - name
+        - tone
+        - general_model
+        - rag_model
+        - safety_model
+        - embedding_model
+      properties:
+        name:
+          type: string
+          maxLength: 120
+        tone:
+          type: string
+          maxLength: 255
+        default_language:
+          type: string
+          enum: [th, en, "th,en"]
+          default: th
+        max_sentences:
+          type: integer
+          minimum: 1
+          maximum: 5
+          default: 5
+        general_model:
+          type: string
+        rag_model:
+          type: string
+        safety_model:
+          type: string
+        embedding_model:
+          type: string
+        rag_enabled:
+          type: boolean
+          default: true
+        mental_health_enabled:
+          type: boolean
+          default: true
+        safety_enabled:
+          type: boolean
+          default: true
+        handoff_enabled:
+          type: boolean
+          default: true
+        classification_enabled:
+          type: boolean
+          default: true
+        system_instruction:
+          type: string
+          maxLength: 4000
+
+    TenantAiSettings:
+      allOf:
+        - $ref: "#/components/schemas/TenantAiSettingsRequest"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            tenant_id:
+              type: string
+              format: uuid
+            is_active:
+              type: boolean
+
+    DocumentUploadRequest:
+      type: object
+      required: [tenant_id, document_category, file]
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        document_category:
+          type: string
+          enum: [benefits, welfare, leave_policy, insurance, hr_faq, other]
+        file:
+          type: string
+          format: binary
+
+    Document:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        file_name:
+          type: string
+        file_type:
+          type: string
+        file_size_bytes:
+          type: integer
+        document_category:
+          type: string
+          enum: [benefits, welfare, leave_policy, insurance, hr_faq, other]
+        status:
+          type: string
+          enum: [uploaded, processing, ready, failed]
+        storage_path:
+          type: string
+          nullable: true
+        processing_error:
+          type: string
+          nullable: true
+
+    PlaygroundRequest:
+      type: object
+      required: [tenant_id, message]
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        bot_id:
+          type: string
+          format: uuid
+          deprecated: true
+        message:
+          type: string
+          minLength: 1
+          maxLength: 8000
+
+    PlaygroundResponse:
+      type: object
+      properties:
+        reply:
+          type: string
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourceDocument"
+        model_used:
+          type: string
+        input_tokens:
+          type: integer
+        output_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+        estimated_cost_usd:
+          type: number
+        message_type:
+          type: string
+          example: rag
+
+    ErrorResponse:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string

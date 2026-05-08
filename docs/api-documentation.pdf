@@ -1,0 +1,509 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+2 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+3 0 obj
+<< /Length 3523 >>
+stream
+BT /F2 22.00 Tf 1 0 0 1 48.00 742.00 Tm (AI Employee Support Bot SaaS API) Tj ET
+BT /F1 10.00 Tf 1 0 0 1 48.00 712.30 Tm (Version 1.0.0 | OpenAPI 3.0.3) Tj ET
+BT /F1 10.00 Tf 1 0 0 1 48.00 690.80 Tm (API documentation for the multi-tenant employee support bot backend.) Tj ET
+BT /F1 10.00 Tf 1 0 0 1 48.00 663.80 Tm (The intended production integration is a central LINE bot or legacy bot) Tj ET
+BT /F1 10.00 Tf 1 0 0 1 48.00 650.30 Tm (backend calling the bot-facing /api/v1/* endpoints with) Tj ET
+BT /F1 10.00 Tf 1 0 0 1 48.00 636.80 Tm (x-central-bot-secret.) Tj ET
+BT /F1 10.00 Tf 1 0 0 1 48.00 609.80 Tm (Tenant-specific admin operations are protected by Supabase Auth session) Tj ET
+BT /F1 10.00 Tf 1 0 0 1 48.00 596.30 Tm (cookies and role checks.) Tj ET
+BT /F2 16.00 Tf 1 0 0 1 48.00 555.30 Tm (Servers) Tj ET
+BT /F1 10.00 Tf 1 0 0 1 48.00 533.70 Tm (- http://localhost:4000 \(Local development\)) Tj ET
+BT /F1 10.00 Tf 1 0 0 1 48.00 520.20 Tm (- https://your-platform-domain.example \(Production\)) Tj ET
+BT /F2 16.00 Tf 1 0 0 1 48.00 492.70 Tm (Authentication) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 465.10 Tm (CentralBotSecret) Tj ET
+BT /F1 10.00 Tf 1 0 0 1 62.00 448.90 Tm (Type: apiKey; Location: header; Name: x-central-bot-secret) Tj ET
+BT /F1 10.00 Tf 1 0 0 1 62.00 435.40 Tm (Shared secret used by the trusted central LINE bot backend.) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 415.90 Tm (LegacyApiKey) Tj ET
+BT /F1 10.00 Tf 1 0 0 1 62.00 399.70 Tm (Type: apiKey; Location: header; Name: x-api-key) Tj ET
+BT /F1 10.00 Tf 1 0 0 1 62.00 386.20 Tm (Legacy tenant API key. Not recommended for central LINE bot integration.) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 366.70 Tm (SupabaseSession) Tj ET
+BT /F1 10.00 Tf 1 0 0 1 62.00 350.50 Tm (Type: apiKey; Location: cookie; Name: sb-access-token) Tj ET
+BT /F1 10.00 Tf 1 0 0 1 62.00 337.00 Tm (Supabase Auth browser session cookies. Actual cookie names depend on Supabase SSR configuration.) Tj ET
+BT /F2 16.00 Tf 1 0 0 1 48.00 307.50 Tm (Endpoint Summary) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 277.90 Tm (Bot API) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 261.70 Tm (Endpoints called by the central bot backend.) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 249.55 Tm (GET    /api/v1/health - Health check) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 237.40 Tm (POST   /api/v1/register - Register a LINE user or external user to a tenant using company code) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 225.25 Tm (POST   /api/v1/chat - Send an employee message to AI/RAG orchestration) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 213.10 Tm (GET    /api/v1/config - Get resolved tenant bot configuration) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 200.95 Tm (GET    /api/v1/usage - Get current tenant usage and quota) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 180.80 Tm (Admin - Setup) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 164.60 Tm (Initial platform admin setup.) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 152.45 Tm (POST   /api/setup/platform-admin - Create the initial platform admin and temporary password) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 132.30 Tm (Admin - Tenants) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 116.10 Tm (Platform admin tenant management.) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 103.95 Tm (POST   /api/admin/tenants - Create tenant, company admin, company code, and tenant defaults) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 91.80 Tm (PATCH  /api/admin/tenants/{tenant_id} - Update tenant plan/status/limits) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 79.65 Tm (DELETE /api/admin/tenants/{tenant_id} - Delete tenant and cascaded tenant data) Tj ET
+endstream
+endobj
+4 0 obj
+<< /Length 3838 >>
+stream
+BT /F2 12.00 Tf 1 0 0 1 48.00 742.00 Tm (Admin - AI Settings) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 725.80 Tm (Platform-admin managed AI settings.) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 713.65 Tm (PATCH  /api/admin/tenants/{tenant_id}/ai-settings - Update per-tenant AI settings) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 701.50 Tm (PATCH  /api/admin/platform-ai-settings - Update legacy/global platform AI fallback settings) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 681.35 Tm (Admin - Documents) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 665.15 Tm (RAG knowledge base document management.) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 653.00 Tm (POST   /api/admin/documents - Upload and process a RAG knowledge base document) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 640.85 Tm (DELETE /api/admin/documents/{document_id} - Delete RAG document) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 620.70 Tm (Admin - Playground) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 604.50 Tm (RAG playground testing.) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 592.35 Tm (POST   /api/admin/playground - Test RAG answer for a tenant) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 572.20 Tm (Admin - API Keys) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 556.00 Tm (Legacy tenant API key management.) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 543.85 Tm (POST   /api/admin/api-keys - Create legacy tenant API key) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 531.70 Tm (DELETE /api/admin/api-keys/{api_key_id} - Revoke legacy tenant API key) Tj ET
+BT /F2 16.00 Tf 1 0 0 1 48.00 501.55 Tm (Endpoint Details) Tj ET
+BT /F2 14.00 Tf 1 0 0 1 48.00 469.95 Tm (Bot API) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 443.05 Tm (GET /api/v1/health) Tj ET
+BT /F2 10.00 Tf 1 0 0 1 62.00 426.85 Tm (Health check) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 413.35 Tm (Legacy tenant API-key health check. Central bot integrations normally call /api/v1/config or /api/v1/usage) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 401.20 Tm (for tenant-aware checks.) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 389.05 Tm (Auth: LegacyApiKey) Tj ET
+BT /F2 9.00 Tf 1 0 0 1 62.00 376.90 Tm (Responses:) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 364.75 Tm (- 200: Service health response. | object) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 345.28 Tm (POST /api/v1/register) Tj ET
+BT /F2 10.00 Tf 1 0 0 1 62.00 329.08 Tm (Register a LINE user or external user to a tenant using company code) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 315.58 Tm (Use when an employee first enters a tenant company code. Stores a link) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 303.43 Tm (from external_user_id + channel to tenant_id.) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 279.13 Tm (Auth: CentralBotSecret) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 266.98 Tm (Request: application/json | RegisterUserRequest) Tj ET
+BT /F2 9.00 Tf 1 0 0 1 62.00 254.83 Tm (Responses:) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 242.68 Tm (- 200: User successfully linked to tenant. | RegisterUserResponse) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 231.20 Tm (- 400: ValidationError) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 219.73 Tm (- 401: Unauthorized) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 208.25 Tm (- 404: Invalid or revoked company code. | ErrorResponse) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 196.78 Tm (- 500: InternalError) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 177.30 Tm (POST /api/v1/chat) Tj ET
+BT /F2 10.00 Tf 1 0 0 1 62.00 161.10 Tm (Send an employee message to AI/RAG orchestration) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 147.60 Tm (Main API for central LINE bot integration.) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 123.30 Tm (If the user is not linked yet, send company_code together with the) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 111.15 Tm (first message. The backend will link the user and answer in the same call.) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 86.85 Tm (If the user is already linked, external_user_id + channel is enough.) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 62.55 Tm (Auth: CentralBotSecret, LegacyApiKey) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Length 4296 >>
+stream
+BT /F1 9.00 Tf 1 0 0 1 62.00 742.00 Tm (Request: application/json | ChatRequest) Tj ET
+BT /F2 9.00 Tf 1 0 0 1 62.00 729.85 Tm (Responses:) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 717.70 Tm (- 200: Successful AI response, quota message, or bot-friendly registration prompt. | ChatSuccessResponse /) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 706.23 Tm (ChatNeedCompanyCodeResponse) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 694.75 Tm (- 400: ValidationError) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 683.27 Tm (- 401: Unauthorized) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 671.80 Tm (- 500: InternalError) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 652.32 Tm (GET /api/v1/config) Tj ET
+BT /F2 10.00 Tf 1 0 0 1 62.00 636.12 Tm (Get resolved tenant bot configuration) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 622.62 Tm (Resolve tenant from central bot secret and external user id, then return display config and feature flags.) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 610.47 Tm (Auth: CentralBotSecret, LegacyApiKey) Tj ET
+BT /F2 9.00 Tf 1 0 0 1 62.00 598.32 Tm (Parameters:) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 586.17 Tm (- external_user_id \(query, required\): Stable external user id, normally LINE user id or legacy user UUID.) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 574.70 Tm (- channel \(query, optional\): Source channel. Use line for LINE bot integration.) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 563.22 Tm (- company_code \(query, optional\): Tenant company code. Needed if user is not linked yet.) Tj ET
+BT /F2 9.00 Tf 1 0 0 1 62.00 551.75 Tm (Responses:) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 539.60 Tm (- 200: Tenant bot config. | BotConfigResponse) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 528.12 Tm (- 400: ValidationError) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 516.65 Tm (- 401: Unauthorized) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 505.17 Tm (- 404: TenantNotResolved) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 485.70 Tm (GET /api/v1/usage) Tj ET
+BT /F2 10.00 Tf 1 0 0 1 62.00 469.50 Tm (Get current tenant usage and quota) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 456.00 Tm (Auth: CentralBotSecret, LegacyApiKey) Tj ET
+BT /F2 9.00 Tf 1 0 0 1 62.00 443.85 Tm (Parameters:) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 431.70 Tm (- external_user_id \(query, required\): Stable external user id, normally LINE user id or legacy user UUID.) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 420.22 Tm (- channel \(query, optional\): Source channel. Use line for LINE bot integration.) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 408.75 Tm (- company_code \(query, optional\): Tenant company code. Needed if user is not linked yet.) Tj ET
+BT /F2 9.00 Tf 1 0 0 1 62.00 397.27 Tm (Responses:) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 385.12 Tm (- 200: Tenant usage summary. | UsageResponse) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 373.65 Tm (- 400: ValidationError) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 362.17 Tm (- 401: Unauthorized) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 350.70 Tm (- 404: TenantNotResolved) Tj ET
+BT /F2 14.00 Tf 1 0 0 1 48.00 329.22 Tm (Admin - Setup) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 302.32 Tm (POST /api/setup/platform-admin) Tj ET
+BT /F2 10.00 Tf 1 0 0 1 62.00 286.12 Tm (Create the initial platform admin and temporary password) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 272.62 Tm (Request: application/json | object) Tj ET
+BT /F2 9.00 Tf 1 0 0 1 62.00 260.47 Tm (Responses:) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 248.32 Tm (- 200: Platform admin created. | object) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 236.85 Tm (- 400: ValidationError) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 225.37 Tm (- 409: Platform admin already exists. | object) Tj ET
+BT /F2 14.00 Tf 1 0 0 1 48.00 203.90 Tm (Admin - Tenants) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 177.00 Tm (POST /api/admin/tenants) Tj ET
+BT /F2 10.00 Tf 1 0 0 1 62.00 160.80 Tm (Create tenant, company admin, company code, and tenant defaults) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 147.30 Tm (Auth: SupabaseSession) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 135.15 Tm (Request: application/json | CreateTenantRequest) Tj ET
+BT /F2 9.00 Tf 1 0 0 1 62.00 123.00 Tm (Responses:) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 110.85 Tm (- 200: Tenant onboarding result. | CreateTenantResponse) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 99.37 Tm (- 400: ValidationError) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 87.90 Tm (- 401: AdminUnauthorized) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 76.42 Tm (- 403: Forbidden) Tj ET
+endstream
+endobj
+6 0 obj
+<< /Length 3855 >>
+stream
+BT /F2 12.00 Tf 1 0 0 1 48.00 742.00 Tm (PATCH /api/admin/tenants/{tenant_id}) Tj ET
+BT /F2 10.00 Tf 1 0 0 1 62.00 725.80 Tm (Update tenant plan/status/limits) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 712.30 Tm (Auth: SupabaseSession) Tj ET
+BT /F2 9.00 Tf 1 0 0 1 62.00 700.15 Tm (Parameters:) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 688.00 Tm (- tenant_id \(path, required\):) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 676.52 Tm (Request: application/json | UpdateTenantRequest) Tj ET
+BT /F2 9.00 Tf 1 0 0 1 62.00 664.38 Tm (Responses:) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 652.23 Tm (- 200: Updated tenant. | Tenant) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 640.75 Tm (- 400: ValidationError) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 629.27 Tm (- 401: AdminUnauthorized) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 617.80 Tm (- 403: Forbidden) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 598.32 Tm (DELETE /api/admin/tenants/{tenant_id}) Tj ET
+BT /F2 10.00 Tf 1 0 0 1 62.00 582.12 Tm (Delete tenant and cascaded tenant data) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 568.62 Tm (Platform Admin only. Deletes tenant, tenant-scoped relational data, RAG files,) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 556.47 Tm (and company admin auth users that are not members of any other tenant.) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 532.17 Tm (Auth: SupabaseSession) Tj ET
+BT /F2 9.00 Tf 1 0 0 1 62.00 520.02 Tm (Parameters:) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 507.88 Tm (- tenant_id \(path, required\):) Tj ET
+BT /F2 9.00 Tf 1 0 0 1 62.00 496.40 Tm (Responses:) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 484.25 Tm (- 200: Tenant deleted. | object) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 472.77 Tm (- 401: AdminUnauthorized) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 461.30 Tm (- 403: Forbidden) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 449.82 Tm (- 404: Tenant not found.) Tj ET
+BT /F2 14.00 Tf 1 0 0 1 48.00 428.35 Tm (Admin - AI Settings) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 401.45 Tm (PATCH /api/admin/tenants/{tenant_id}/ai-settings) Tj ET
+BT /F2 10.00 Tf 1 0 0 1 62.00 385.25 Tm (Update per-tenant AI settings) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 371.75 Tm (Platform Admin only. Company Admin cannot edit or see model/system-instruction settings.) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 359.60 Tm (Auth: SupabaseSession) Tj ET
+BT /F2 9.00 Tf 1 0 0 1 62.00 347.45 Tm (Parameters:) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 335.30 Tm (- tenant_id \(path, required\):) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 323.82 Tm (Request: application/json | TenantAiSettingsRequest) Tj ET
+BT /F2 9.00 Tf 1 0 0 1 62.00 311.68 Tm (Responses:) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 299.53 Tm (- 200: Updated bot settings row. | TenantAiSettings) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 288.05 Tm (- 400: ValidationError) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 276.57 Tm (- 401: AdminUnauthorized) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 265.10 Tm (- 403: Forbidden) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 245.62 Tm (PATCH /api/admin/platform-ai-settings) Tj ET
+BT /F2 10.00 Tf 1 0 0 1 62.00 229.42 Tm (Update legacy/global platform AI fallback settings) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 215.92 Tm (This route is retained as a fallback/default settings endpoint. Current) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 203.77 Tm (product behavior is per-tenant AI settings managed from) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 191.62 Tm (/platform/tenants/{tenant_id}/ai-settings.) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 167.32 Tm (Auth: SupabaseSession) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 155.17 Tm (Request: application/json | TenantAiSettingsRequest) Tj ET
+BT /F2 9.00 Tf 1 0 0 1 62.00 143.02 Tm (Responses:) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 130.87 Tm (- 200: Updated platform bot settings. | TenantAiSettings) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 119.40 Tm (- 401: AdminUnauthorized) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 107.92 Tm (- 403: Forbidden) Tj ET
+BT /F2 14.00 Tf 1 0 0 1 48.00 86.45 Tm (Admin - Documents) Tj ET
+endstream
+endobj
+7 0 obj
+<< /Length 3725 >>
+stream
+BT /F2 12.00 Tf 1 0 0 1 48.00 742.00 Tm (POST /api/admin/documents) Tj ET
+BT /F2 10.00 Tf 1 0 0 1 62.00 725.80 Tm (Upload and process a RAG knowledge base document) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 712.30 Tm (Accepts PDF, DOCX, TXT, or Markdown. Creates document record, uploads raw) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 700.15 Tm (file to Supabase Storage, extracts/chunks text, creates embeddings, and) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 688.00 Tm (stores vectors in document_chunks.) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 663.70 Tm (Auth: SupabaseSession) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 651.55 Tm (Request: multipart/form-data | DocumentUploadRequest) Tj ET
+BT /F2 9.00 Tf 1 0 0 1 62.00 639.40 Tm (Responses:) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 627.25 Tm (- 200: Uploaded and processed document. | object) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 615.78 Tm (- 400: ValidationError) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 604.30 Tm (- 401: AdminUnauthorized) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 592.83 Tm (- 403: Forbidden) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 573.35 Tm (DELETE /api/admin/documents/{document_id}) Tj ET
+BT /F2 10.00 Tf 1 0 0 1 62.00 557.15 Tm (Delete RAG document) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 543.65 Tm (Auth: SupabaseSession) Tj ET
+BT /F2 9.00 Tf 1 0 0 1 62.00 531.50 Tm (Parameters:) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 519.35 Tm (- document_id \(path, required\):) Tj ET
+BT /F2 9.00 Tf 1 0 0 1 62.00 507.88 Tm (Responses:) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 495.73 Tm (- 200: Document deleted. | object) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 484.25 Tm (- 401: AdminUnauthorized) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 472.77 Tm (- 403: Forbidden) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 461.30 Tm (- 404: Document not found.) Tj ET
+BT /F2 14.00 Tf 1 0 0 1 48.00 439.82 Tm (Admin - Playground) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 412.92 Tm (POST /api/admin/playground) Tj ET
+BT /F2 10.00 Tf 1 0 0 1 62.00 396.72 Tm (Test RAG answer for a tenant) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 383.22 Tm (Auth: SupabaseSession) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 371.07 Tm (Request: application/json | PlaygroundRequest) Tj ET
+BT /F2 9.00 Tf 1 0 0 1 62.00 358.93 Tm (Responses:) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 346.78 Tm (- 200: Playground RAG response. | PlaygroundResponse) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 335.30 Tm (- 400: ValidationError) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 323.82 Tm (- 401: AdminUnauthorized) Tj ET
+BT /F2 14.00 Tf 1 0 0 1 48.00 302.35 Tm (Admin - API Keys) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 275.45 Tm (POST /api/admin/api-keys) Tj ET
+BT /F2 10.00 Tf 1 0 0 1 62.00 259.25 Tm (Create legacy tenant API key) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 245.75 Tm (Legacy compatibility only. Central LINE bot should use x-central-bot-secret.) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 233.60 Tm (Auth: SupabaseSession) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 221.45 Tm (Request: application/json | object) Tj ET
+BT /F2 9.00 Tf 1 0 0 1 62.00 209.30 Tm (Responses:) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 197.15 Tm (- 200: Created API key. Raw key is returned once. | object) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 185.67 Tm (- 401: AdminUnauthorized) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 166.20 Tm (DELETE /api/admin/api-keys/{api_key_id}) Tj ET
+BT /F2 10.00 Tf 1 0 0 1 62.00 150.00 Tm (Revoke legacy tenant API key) Tj ET
+BT /F1 9.00 Tf 1 0 0 1 62.00 136.50 Tm (Auth: SupabaseSession) Tj ET
+BT /F2 9.00 Tf 1 0 0 1 62.00 124.35 Tm (Parameters:) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 112.20 Tm (- api_key_id \(path, required\):) Tj ET
+BT /F2 9.00 Tf 1 0 0 1 62.00 100.72 Tm (Responses:) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 88.57 Tm (- 200: API key revoked. | object) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 76.00 77.10 Tm (- 401: AdminUnauthorized) Tj ET
+endstream
+endobj
+8 0 obj
+<< /Length 4344 >>
+stream
+BT /F2 16.00 Tf 1 0 0 1 48.00 742.00 Tm (Schema Reference) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 712.40 Tm (RegisterUserRequest) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 696.20 Tm (Required: company_code) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 684.72 Tm (- external_user_id: string - Stable external user id. Either this or line_user_id is required.) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 673.25 Tm (- line_user_id: string - LINE user id. Either this or external_user_id is required.) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 661.77 Tm (- channel: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 650.30 Tm (- company_code: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 638.82 Tm (- display_name: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 627.35 Tm (- metadata: object) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 607.87 Tm (RegisterUserResponse) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 591.67 Tm (Required: success, tenant_id, tenant_name, link_id, external_user_id, channel) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 580.20 Tm (- success: boolean) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 568.72 Tm (- tenant_id: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 557.25 Tm (- tenant_name: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 545.77 Tm (- link_id: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 534.30 Tm (- external_user_id: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 522.82 Tm (- channel: string) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 503.35 Tm (ChatRequest) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 487.15 Tm (Required: external_user_id, message) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 475.67 Tm (- external_user_id: string - Stable user id from LINE or legacy system.) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 464.20 Tm (- channel: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 452.72 Tm (- message: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 441.25 Tm (- company_code: string - Optional. Used to link user to tenant if not linked yet.) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 429.77 Tm (- conversation_id: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 418.30 Tm (- bot_id: string - Legacy field. Current runtime uses tenant AI settings.) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 406.82 Tm (- metadata: object) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 387.35 Tm (ChatSuccessResponse) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 371.15 Tm (Required: success, reply, message_type, safety_level, conversation_id, sources, handoff_required, handoff, quota) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 359.67 Tm (- success: boolean) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 348.20 Tm (- reply: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 336.72 Tm (- message_type: string enum\(general, rag, mental_health, safety, crisis, out_of_scope, quota_exceeded\)) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 325.25 Tm (- safety_level: string enum\(normal, medium, high, crisis\)) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 313.77 Tm (- conversation_id: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 302.30 Tm (- sources: array<SourceDocument>) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 290.82 Tm (- handoff_required: boolean) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 279.35 Tm (- handoff: Handoff) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 267.87 Tm (- quota: QuotaSnapshot) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 256.40 Tm (- debug: object) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 236.92 Tm (ChatNeedCompanyCodeResponse) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 220.72 Tm (Required: success, reply, message_type, safety_level, conversation_id, sources, handoff_required, handoff, quota) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 209.25 Tm (- success: boolean) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 197.77 Tm (- reply: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 186.30 Tm (- message_type: string enum\(out_of_scope\)) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 174.82 Tm (- safety_level: string enum\(normal\)) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 163.35 Tm (- conversation_id: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 151.87 Tm (- sources: array<SourceDocument>) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 140.40 Tm (- handoff_required: boolean) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 128.92 Tm (- handoff: Handoff) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 117.45 Tm (- quota: QuotaSnapshot) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 97.97 Tm (SourceDocument) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 81.77 Tm (- document_name: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 70.30 Tm (- category: string enum\(benefits, welfare, leave_policy, insurance, hr_faq, other, None\)) Tj ET
+endstream
+endobj
+9 0 obj
+<< /Length 3732 >>
+stream
+BT /F1 8.50 Tf 1 0 0 1 62.00 742.00 Tm (- section: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 730.52 Tm (- score: number) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 711.05 Tm (Handoff) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 694.85 Tm (Required: enabled, url, button_text, message) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 683.37 Tm (- enabled: boolean) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 671.90 Tm (- url: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 660.42 Tm (- button_text: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 648.95 Tm (- message: string) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 629.47 Tm (QuotaSnapshot) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 613.27 Tm (Required: plan, used, limit, remaining) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 601.80 Tm (- plan: string enum\(trial, pro\)) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 590.32 Tm (- used: integer) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 578.85 Tm (- limit: integer) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 567.37 Tm (- remaining: integer) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 547.90 Tm (BotConfigResponse) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 531.70 Tm (- company_name: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 520.22 Tm (- bot_name: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 508.75 Tm (- default_language: string enum\(th, en, th,en\)) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 497.27 Tm (- features: object) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 485.80 Tm (- limits: object) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 466.32 Tm (UsageResponse) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 450.12 Tm (- plan: string enum\(trial, pro\)) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 438.65 Tm (- status: string enum\(active, suspended, expired\)) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 427.17 Tm (- messages_used: integer) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 415.70 Tm (- messages_limit: integer) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 404.22 Tm (- messages_remaining: integer) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 392.75 Tm (- estimated_cost_usd: number) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 373.27 Tm (Tenant) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 357.07 Tm (- id: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 345.60 Tm (- name: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 334.12 Tm (- slug: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 322.65 Tm (- plan: string enum\(trial, pro\)) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 311.17 Tm (- status: string enum\(active, suspended, expired\)) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 299.70 Tm (- monthly_message_limit: integer) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 288.22 Tm (- storage_limit_mb: integer) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 276.75 Tm (- max_files: integer) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 265.27 Tm (- max_bots: integer) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 253.80 Tm (- trial_started_at: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 242.32 Tm (- trial_ends_at: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 230.85 Tm (- created_at: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 219.37 Tm (- updated_at: string) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 199.90 Tm (CreateTenantRequest) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 183.70 Tm (Required: name, plan, admin_email, admin_display_name) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 172.22 Tm (- name: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 160.75 Tm (- plan: string enum\(trial, pro\)) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 149.27 Tm (- industry: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 137.80 Tm (- company_description: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 126.32 Tm (- hr_contact_name: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 114.85 Tm (- hr_contact_email: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 103.37 Tm (- admin_email: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 91.90 Tm (- admin_display_name: string) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 72.42 Tm (CreateTenantResponse) Tj ET
+endstream
+endobj
+10 0 obj
+<< /Length 3963 >>
+stream
+BT /F1 8.50 Tf 1 0 0 1 62.00 742.00 Tm (- tenant: Tenant) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 730.52 Tm (- adminUser: object) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 719.05 Tm (- companyCode: object) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 707.57 Tm (- temporaryPassword: string - Returned once for onboarding.) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 688.10 Tm (UpdateTenantRequest) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 671.90 Tm (- name: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 660.42 Tm (- plan: string enum\(trial, pro\)) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 648.95 Tm (- status: string enum\(active, suspended, expired\)) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 637.47 Tm (- monthly_message_limit: integer) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 626.00 Tm (- storage_limit_mb: integer) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 614.52 Tm (- max_files: integer) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 603.05 Tm (- max_bots: integer) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 583.57 Tm (TenantAiSettingsRequest) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 567.37 Tm (Required: name, tone, general_model, rag_model, safety_model, embedding_model) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 555.90 Tm (- name: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 544.42 Tm (- tone: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 532.95 Tm (- default_language: string enum\(th, en, th,en\)) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 521.47 Tm (- max_sentences: integer) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 510.00 Tm (- general_model: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 498.52 Tm (- rag_model: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 487.05 Tm (- safety_model: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 475.57 Tm (- embedding_model: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 464.10 Tm (- rag_enabled: boolean) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 452.62 Tm (- mental_health_enabled: boolean) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 441.15 Tm (- safety_enabled: boolean) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 429.67 Tm (- handoff_enabled: boolean) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 418.20 Tm (- classification_enabled: boolean) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 406.72 Tm (- system_instruction: string) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 387.25 Tm (TenantAiSettings) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 371.05 Tm (Composite schema or free-form object.) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 351.57 Tm (DocumentUploadRequest) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 335.37 Tm (Required: tenant_id, document_category, file) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 323.90 Tm (- tenant_id: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 312.42 Tm (- document_category: string enum\(benefits, welfare, leave_policy, insurance, hr_faq, other\)) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 300.95 Tm (- file: string) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 281.47 Tm (Document) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 265.27 Tm (- id: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 253.80 Tm (- tenant_id: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 242.32 Tm (- file_name: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 230.85 Tm (- file_type: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 219.37 Tm (- file_size_bytes: integer) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 207.90 Tm (- document_category: string enum\(benefits, welfare, leave_policy, insurance, hr_faq, other\)) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 196.42 Tm (- status: string enum\(uploaded, processing, ready, failed\)) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 184.95 Tm (- storage_path: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 173.47 Tm (- processing_error: string) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 154.00 Tm (PlaygroundRequest) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 137.80 Tm (Required: tenant_id, message) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 126.32 Tm (- tenant_id: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 114.85 Tm (- bot_id: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 103.37 Tm (- message: string) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 83.90 Tm (PlaygroundResponse) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 67.70 Tm (- reply: string) Tj ET
+endstream
+endobj
+11 0 obj
+<< /Length 770 >>
+stream
+BT /F1 8.50 Tf 1 0 0 1 62.00 742.00 Tm (- sources: array<SourceDocument>) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 730.52 Tm (- model_used: string) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 719.05 Tm (- input_tokens: integer) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 707.57 Tm (- output_tokens: integer) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 696.10 Tm (- total_tokens: integer) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 684.62 Tm (- estimated_cost_usd: number) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 673.15 Tm (- message_type: string) Tj ET
+BT /F2 12.00 Tf 1 0 0 1 48.00 653.67 Tm (ErrorResponse) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 637.47 Tm (Required: success, error) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 626.00 Tm (- success: boolean) Tj ET
+BT /F1 8.50 Tf 1 0 0 1 62.00 614.52 Tm (- error: object) Tj ET
+endstream
+endobj
+12 0 obj
+<< /Type /Pages /Kids [13 0 R 14 0 R 15 0 R 16 0 R 17 0 R 18 0 R 19 0 R 20 0 R 21 0 R] /Count 9 >>
+endobj
+13 0 obj
+<< /Type /Page /Parent 12 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 3 0 R >>
+endobj
+14 0 obj
+<< /Type /Page /Parent 12 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 4 0 R >>
+endobj
+15 0 obj
+<< /Type /Page /Parent 12 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 5 0 R >>
+endobj
+16 0 obj
+<< /Type /Page /Parent 12 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 6 0 R >>
+endobj
+17 0 obj
+<< /Type /Page /Parent 12 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 7 0 R >>
+endobj
+18 0 obj
+<< /Type /Page /Parent 12 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 8 0 R >>
+endobj
+19 0 obj
+<< /Type /Page /Parent 12 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 9 0 R >>
+endobj
+20 0 obj
+<< /Type /Page /Parent 12 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 10 0 R >>
+endobj
+21 0 obj
+<< /Type /Page /Parent 12 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 11 0 R >>
+endobj
+22 0 obj
+<< /Type /Catalog /Pages 12 0 R >>
+endobj
+xref
+0 23
+0000000000 65535 f 
+0000000015 00000 n 
+0000000085 00000 n 
+0000000160 00000 n 
+0000003735 00000 n 
+0000007625 00000 n 
+0000011973 00000 n 
+0000015880 00000 n 
+0000019657 00000 n 
+0000024053 00000 n 
+0000027837 00000 n 
+0000031853 00000 n 
+0000032675 00000 n 
+0000032790 00000 n 
+0000032928 00000 n 
+0000033066 00000 n 
+0000033204 00000 n 
+0000033342 00000 n 
+0000033480 00000 n 
+0000033618 00000 n 
+0000033756 00000 n 
+0000033895 00000 n 
+0000034034 00000 n 
+trailer
+<< /Size 23 /Root 22 0 R >>
+startxref
+34085
+%%EOF

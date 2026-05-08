@@ -1,0 +1,68 @@
+{
+  "id": "local-ai-employee-support-bot",
+  "name": "AI Employee Support Bot - Local",
+  "values": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:4000",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "central_bot_secret",
+      "value": "replace-with-CENTRAL_BOT_SECRET-from-env-local",
+      "type": "secret",
+      "enabled": true
+    },
+    {
+      "key": "company_code",
+      "value": "replace-with-tenant-company-code",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "channel",
+      "value": "line",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "line_user_id",
+      "value": "postman-line-user-001",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "external_user_id",
+      "value": "postman-line-user-001",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "conversation_id",
+      "value": "postman-conversation-1",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "tenant_id",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "link_id",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "legacy_api_key",
+      "value": "optional-legacy-x-api-key",
+      "type": "secret",
+      "enabled": true
+    }
+  ],
+  "_postman_variable_scope": "environment",
+  "_postman_exported_using": "Cursor"
+}
