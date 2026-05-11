@@ -1,14 +1,13 @@
 import OpenAI from "openai";
 import { env } from "@/lib/env";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import { classifyMessage } from "@/lib/services/classificationService";
+import { classifyMessageRuleBased } from "@/lib/services/classificationService";
 import { estimateCost } from "@/lib/services/costService";
 import { checkQuota, getQuotaSnapshot } from "@/lib/services/quotaService";
-import { buildRagContext, chunksToSources, retrieveChunks } from "@/lib/services/ragService";
-import { buildHandoff, classifySafetyLevel, crisisResponse } from "@/lib/services/safetyService";
+import { buildHandoff, classifySafetyLevelRuleBased, crisisResponse } from "@/lib/services/safetyService";
 import { enforceTenantAvailability } from "@/lib/services/tenantService";
 import { logMessage, logUsage } from "@/lib/services/usageService";
-import { generalSupportPrompt, mentalHealthPrompt, outOfScopeResponse, ragPrompt } from "@/lib/services/promptService";
+import { generalSupportPrompt, mentalHealthPrompt, outOfScopeResponse } from "@/lib/services/promptService";
 import { getTenantAiSettings, type PlatformAiSettings } from "@/lib/services/platformAiSettingsService";
 import type {
   ChatApiResponse,
@@ -33,7 +32,7 @@ function fallbackAnswer(category: ClassificationCategory) {
 }
 
 function categoryToMessageType(category: ClassificationCategory): MessageType {
-  if (category === "welfare_rag") return "rag";
+  if (category === "welfare_rag") return "general";
   if (category === "mental_health_support" || category === "mental_health_sensitive") return "mental_health";
   if (category === "crisis") return "crisis";
   if (category === "out_of_scope") return "out_of_scope";
@@ -41,14 +40,12 @@ function categoryToMessageType(category: ClassificationCategory): MessageType {
 }
 
 function categoryToRequestType(category: ClassificationCategory): RequestType {
-  if (category === "welfare_rag") return "rag";
   if (category === "mental_health_sensitive") return "safety";
   return "general";
 }
 
 function modelForCategory(category: ClassificationCategory, safetyLevel: SafetyLevel, settings: PlatformAiSettings) {
-  if (category === "welfare_rag" || category === "mental_health_sensitive" || safetyLevel === "high") return settings.rag_model;
-  if (category === "crisis") return settings.safety_model;
+  if (category === "crisis" || category === "mental_health_sensitive" || safetyLevel === "high") return settings.safety_model;
   return settings.general_model;
 }
 
@@ -161,13 +158,13 @@ export async function handleChatRequest(input: ChatRequestInput & { tenant: Tena
     };
   }
 
-  const [profile, aiSettings, escalationSettings, category, safetyLevel] = await Promise.all([
+  const [profile, aiSettings, escalationSettings] = await Promise.all([
     getTenantProfile(input.tenant.id),
     getTenantAiSettings(input.tenant.id),
     getEscalationSettings(input.tenant.id),
-    classifyMessage(input.message, input.tenant.id),
-    classifySafetyLevel(input.message, input.tenant.id),
   ]);
+  const category = classifyMessageRuleBased(input.message);
+  const safetyLevel = classifySafetyLevelRuleBased(input.message);
 
   const companyName = profile?.company_name ?? input.tenant.name;
   const externalUserDbId = await getOrCreateExternalUser({ ...input, tenantId: input.tenant.id });
@@ -218,16 +215,11 @@ export async function handleChatRequest(input: ChatRequestInput & { tenant: Tena
   }
 
   const model = modelForCategory(category, safetyLevel, aiSettings);
-  let sources: SourceDocument[] = [];
+  const sources: SourceDocument[] = [];
   let systemPrompt = generalSupportPrompt(companyName, aiSettings);
-  let userPrompt = input.message;
+  const userPrompt = input.message;
 
-  if (category === "welfare_rag" && aiSettings.rag_enabled) {
-    const chunks = await retrieveChunks({ tenantId: input.tenant.id, query: input.message });
-    sources = chunksToSources(chunks);
-    systemPrompt = ragPrompt(companyName, aiSettings);
-    userPrompt = `Company knowledge context:\n${buildRagContext(chunks)}\n\nEmployee question:\n${input.message}`;
-  } else if ((category === "mental_health_support" || category === "mental_health_sensitive") && aiSettings.mental_health_enabled) {
+  if ((category === "mental_health_support" || category === "mental_health_sensitive") && aiSettings.mental_health_enabled) {
     systemPrompt = mentalHealthPrompt(aiSettings);
   } else if (category === "out_of_scope") {
     systemPrompt = generalSupportPrompt(companyName, aiSettings);

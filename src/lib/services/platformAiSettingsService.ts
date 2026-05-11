@@ -20,6 +20,8 @@ export interface PlatformAiSettings {
   system_instruction: string | null;
 }
 
+export const RAG_RUNTIME_ENABLED = false;
+
 export const DEFAULT_PLATFORM_AI_SETTINGS: PlatformAiSettings = {
   name: "Central Employee Support Bot",
   default_language: "th",
@@ -29,7 +31,7 @@ export const DEFAULT_PLATFORM_AI_SETTINGS: PlatformAiSettings = {
   rag_model: AI_MODELS.RAG,
   safety_model: AI_MODELS.SAFETY,
   embedding_model: AI_MODELS.EMBEDDING,
-  rag_enabled: true,
+  rag_enabled: RAG_RUNTIME_ENABLED,
   mental_health_enabled: true,
   safety_enabled: true,
   handoff_enabled: true,
@@ -48,7 +50,7 @@ function normalizePlatformAiSettings(row: Partial<PlatformAiSettings> | null | u
     ...row,
     default_language: Array.from(new Set(languages.length ? languages : ["th"])).join(","),
     max_sentences: Math.min(Math.max(Number(row?.max_sentences ?? DEFAULT_PLATFORM_AI_SETTINGS.max_sentences), 1), 5),
-    rag_enabled: row?.rag_enabled ?? DEFAULT_PLATFORM_AI_SETTINGS.rag_enabled,
+    rag_enabled: RAG_RUNTIME_ENABLED && (row?.rag_enabled ?? DEFAULT_PLATFORM_AI_SETTINGS.rag_enabled),
     mental_health_enabled: row?.mental_health_enabled ?? DEFAULT_PLATFORM_AI_SETTINGS.mental_health_enabled,
     safety_enabled: row?.safety_enabled ?? DEFAULT_PLATFORM_AI_SETTINGS.safety_enabled,
     handoff_enabled: row?.handoff_enabled ?? DEFAULT_PLATFORM_AI_SETTINGS.handoff_enabled,

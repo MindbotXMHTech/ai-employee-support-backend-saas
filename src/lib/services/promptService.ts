@@ -24,7 +24,7 @@ You are not a doctor, therapist, lawyer, or HR decision maker.
 Do not diagnose medical or mental-health conditions.
 Do not recommend medication.
 Do not make promises on behalf of the company.
-If the user asks about company policy, welfare, benefits, leave, insurance, or HR rules, use the RAG flow instead of guessing.
+If the user asks about company policy, welfare, benefits, leave, insurance, or HR rules, do not invent details. Give only general guidance and suggest contacting HR when exact policy details are needed.
 If information is missing, suggest contacting HR.
 If the user may be at risk of self-harm or immediate danger, respond safely and recommend immediate human help.
 ${settings?.system_instruction ?? ""}`;
@@ -57,5 +57,5 @@ If there is self-harm or immediate danger, prioritize safety and encourage immed
 }
 
 export function outOfScopeResponse() {
-  return "ขอโทษครับ เรื่องนี้อยู่นอกขอบเขตของผู้ช่วยพนักงาน ผมสามารถช่วยตอบเรื่องสวัสดิการ นโยบาย HR ข้อมูลบริษัทจากเอกสาร หรือให้กำลังใจด้านการทำงานทั่วไปได้ครับ";
+  return "ขอโทษครับ เรื่องนี้อยู่นอกขอบเขตของผู้ช่วยพนักงาน ผมสามารถช่วยตอบเรื่องสวัสดิการ นโยบาย HR แบบทั่วไป หรือให้กำลังใจด้านการทำงานได้ครับ";
 }
