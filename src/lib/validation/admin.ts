@@ -64,6 +64,11 @@ export const apiKeyCreateSchema = z.object({
   name: z.string().min(1).max(100),
 });
 
+export const workflowTokenCreateSchema = z.object({
+  tenant_id: z.string().uuid(),
+  name: z.string().min(1).max(100),
+});
+
 export const documentUploadSchema = z.object({
   tenant_id: z.string().uuid(),
   document_category: z.enum(["benefits", "welfare", "leave_policy", "insurance", "hr_faq", "other"]),

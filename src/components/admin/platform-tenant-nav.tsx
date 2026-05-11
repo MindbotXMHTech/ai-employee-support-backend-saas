@@ -7,6 +7,7 @@ const sections = [
   { href: "/ai-settings", label: "AI Settings" },
   { href: "/knowledge-base", label: "Knowledge Base" },
   { href: "/employees", label: "Employee Links" },
+  { href: "/workflow-tokens", label: "Workflow HTTP" },
   { href: "/usage", label: "Usage" },
   { href: "/conversations", label: "Conversations" },
   { href: "/safety", label: "Safety" },

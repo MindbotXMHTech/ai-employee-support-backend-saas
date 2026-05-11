@@ -46,6 +46,7 @@ export async function POST(request: NextRequest) {
       success: true,
       tenant_id: registered.tenant.id,
       tenant_name: registered.tenant.name,
+      company_code: registered.normalizedCompanyCode,
       link_id: registered.link.id,
       external_user_id: externalUserId,
       channel: parsed.data.channel,

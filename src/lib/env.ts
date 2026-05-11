@@ -12,6 +12,8 @@ const envSchema = z.object({
   DEFAULT_MAX_SENTENCES: z.coerce.number().int().positive().default(5),
   API_KEY_SECRET: z.string().optional(),
   CENTRAL_BOT_SECRET: z.string().optional(),
+  MINDBLOOM_PROVISION_URL: z.string().optional(),
+  MINDBLOOM_PROVISION_SECRET: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);
