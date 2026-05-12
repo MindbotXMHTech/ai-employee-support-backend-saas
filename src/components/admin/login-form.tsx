@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,8 +12,22 @@ export function LoginForm({ nextPath }: { nextPath?: string }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+  // Native HTML forms default to GET; if JS fails (e.g. dev assets blocked via ngrok), credentials
+  // end up in the URL. Strip them and keep only ?next= for safety.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("email") && !params.has("password")) return;
+    const next = params.get("next");
+    const qs = next?.startsWith("/") ? `?next=${encodeURIComponent(next)}` : "";
+    window.history.replaceState(null, "", `${window.location.pathname}${qs}`);
+  }, []);
+
+  function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    void submitLogin(event);
+  }
+
+  async function submitLogin(event: React.FormEvent<HTMLFormElement>) {
     setLoading(true);
     setError(null);
     const form = new FormData(event.currentTarget);
@@ -50,7 +64,7 @@ export function LoginForm({ nextPath }: { nextPath?: string }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
+    <form method="post" onSubmit={onSubmit} className="space-y-4">
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
         <Input id="email" name="email" type="email" autoComplete="email" placeholder="admin@company.com" required />
@@ -63,6 +77,12 @@ export function LoginForm({ nextPath }: { nextPath?: string }) {
       <Button className="w-full" type="submit" disabled={loading}>
         {loading ? "Signing in..." : "Sign in"}
       </Button>
+      {process.env.NODE_ENV === "development" ? (
+        <p className="text-center text-xs text-slate-500">
+          Local Supabase seed: <span className="font-mono">platform-admin@local.dev</span> /{" "}
+          <span className="font-mono">LocalDev123!</span> — see README.
+        </p>
+      ) : null}
     </form>
   );
 }

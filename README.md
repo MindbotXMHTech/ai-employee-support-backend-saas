@@ -87,13 +87,35 @@ Install dependencies:
 npm install
 ```
 
-Create local env:
+Start local Supabase (Docker) and apply migrations plus `supabase/seed.sql`:
 
 ```bash
-cp .env.example .env.local
+npx supabase start
 ```
 
-Run dev server:
+To wipe the local database and re-run migrations and seed:
+
+```bash
+npx supabase db reset
+```
+
+Create local env (point URLs and keys at the local stack from `npx supabase status`):
+
+```bash
+cp .env.example .env
+```
+
+With Supabase CLI 2.x, `status` prints **Publishable** and **Secret** keys (`sb_publishable_*` / `sb_secret_*`). Put the Publishable value in `NEXT_PUBLIC_SUPABASE_ANON_KEY` and the Secret in `SUPABASE_SERVICE_ROLE_KEY` in the same edit—do not mix them with the older demo JWT anon key (`eyJ...`) or PostgREST may return `PGRST301`.
+
+Run dev server (loads `.env` first — useful with local Supabase):
+
+```bash
+npm run dev:local -- -p 4000
+```
+
+If **`.env.local` exists**, Next.js still loads it in development (`Environments: .env.local, .env`). For any **duplicate variable name**, **`.env.local` wins** over `.env`. So either: keep Supabase keys in **only one** of the two files, or give them the **same** values in both. Otherwise `npm run dev:local` can look like it “uses `.env`” while runtime still picks remote/wrong keys from `.env.local`.
+
+Or without forcing `.env` load order:
 
 ```bash
 npm run dev -- -p 4000
@@ -103,9 +125,20 @@ Open:
 
 - App: `http://localhost:4000`
 - Login: `http://localhost:4000/login`
-- First platform admin setup: `http://localhost:4000/setup/platform-admin`
+- First platform admin setup: `http://localhost:4000/setup/platform-admin` (hosted / non-seeded projects)
 - Platform dashboard: `http://localhost:4000/platform`
 - Company dashboard: `http://localhost:4000/dashboard`
+
+### Local admin login (seeded)
+
+After `supabase start` or `supabase db reset`, the seed creates **one** platform admin if no `platform_admin` row exists yet in `public.users`:
+
+| Field    | Value |
+| -------- | ----- |
+| Email    | `platform-admin@local.dev` |
+| Password | `LocalDev123!` |
+
+Use these on `/login` with local Supabase and an `.env` that matches `npx supabase status` (project URL, anon key, service role key). This account is for **local development only**; do not rely on it on hosted Supabase (seed is not applied the same way on remote `db push`).
 
 ## API Documentation
 
@@ -129,7 +162,7 @@ To test chat in Postman:
 
 1. Import both files into Postman.
 2. Select the `AI Employee Support Bot - Local` environment.
-3. Set `central_bot_secret` from `.env.local` (`CENTRAL_BOT_SECRET`).
+3. Set `central_bot_secret` from `.env` or `.env.local` (`CENTRAL_BOT_SECRET`).
 4. Set `company_code` from the tenant detail page in Platform Admin.
 5. Run `1. Register LINE User With Company Code`.
 6. Run `3. Chat - Linked User` to test normal chat.
@@ -199,7 +232,9 @@ Current migration themes:
 - `0005_tenant_ai_settings.sql` - per-tenant AI setting fields and RLS update
 - `0006_workflow_tokens.sql` - tenant-scoped workflow tokens for headerless HTTP clients
 
-Link the CLI to your hosted project once (`supabase login`, then `supabase link --project-ref …` — see comments in [`.env.example`](.env.example)). Use the same Supabase API values in `.env.local` for the app.
+Link the CLI to your hosted project once (`supabase login`, then `supabase link --project-ref …` — see comments in [`.env.example`](.env.example)). Use the same Supabase API values in `.env` or `.env.local` for the app.
+
+Local seed data lives in [`supabase/seed.sql`](supabase/seed.sql) (one seeded platform admin; see **Local admin login (seeded)** above). It runs after migrations on `supabase db reset` and on first `supabase start` for a fresh volume.
 
 Push pending migrations:
 
@@ -703,6 +738,7 @@ Company Admin does not have AI settings access.
 ## Development Commands
 
 ```bash
+npm run dev:local -- -p 4000
 npm run dev -- -p 4000
 npm run lint
 npm test
