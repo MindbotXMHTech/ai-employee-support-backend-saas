@@ -106,6 +106,9 @@ paths:
       description: |
         Main API for central LINE bot integration.
 
+        Authenticate with **`x-central-bot-secret`** or legacy **`x-api-key`** (no JSON-body auth secrets).
+        For tenant-scoped **workflow** tokens when headers are impossible, use **`POST /api/v2/chat`** instead.
+
         If the user is not linked yet, send `company_code` together with the
         first message. The backend will link the user and answer in the same call.
 
@@ -156,11 +159,15 @@ paths:
       tags: [Bot API]
       summary: Simplified central bot chat (user_id, message, company_code)
       description: |
-        Simplified endpoint for central bot integrations.
+        LINE-oriented endpoint for central bot integrations.
 
-        Request requires only `user_id`, `message`, and `company_code`.
-        Backend resolves tenant from `company_code`, upserts user-to-tenant link,
-        then runs the same AI orchestration pipeline (RAG/safety/quota/usage cost logging).
+        Authenticate with **`x-central-bot-secret`** (preferred), **or** send a
+        tenant-scoped **`workflow_token`** in the JSON body when the HTTP client
+        cannot set custom headers (same semantics as admin “Workflow HTTP” tokens).
+
+        Request fields: `user_id`, `message`, and `company_code`. Backend resolves
+        tenant, upserts user-to-tenant link where applicable, then runs the same
+        AI orchestration pipeline as `/api/v1/chat`.
       security:
         - CentralBotSecret: []
       requestBody:
@@ -169,10 +176,20 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/ChatV2Request"
-            example:
-              user_id: "111"
-              message: อยากคุยด้วย
-              company_code: ABC503
+            examples:
+              centralHeader:
+                summary: With x-central-bot-secret
+                value:
+                  user_id: "111"
+                  message: อยากคุยด้วย
+                  company_code: ABC503
+              workflowBody:
+                summary: Headerless (workflow_token only)
+                value:
+                  workflow_token: wf_live_...
+                  user_id: Uxxxxxxxxxxxxxxxx
+                  message: อยากคุยด้วย
+                  company_code: ABC503
       responses:
         "200":
           description: Successful AI response.
@@ -184,8 +201,19 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: User already linked to a different tenant (workflow_token path).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error:
+                  code: TENANT_MISMATCH
+                  message: This user is already linked to a different company.
         "404":
-          description: Invalid or revoked company code.
+          description: Invalid or revoked company code (or invalid code for the workflow token tenant).
           content:
             application/json:
               schema:
@@ -813,6 +841,12 @@ components:
         company_code:
           type: string
           maxLength: 64
+        workflow_token:
+          type: string
+          maxLength: 512
+          description: |
+            Optional. Tenant-scoped token when `x-central-bot-secret` cannot be sent as a header.
+            Do not send `CENTRAL_BOT_SECRET` in this field.
 
     ChatSuccessResponse:
       type: object
