@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Activity,
+  Cable,
   FileText,
   Gauge,
   KeyRound,
@@ -20,6 +21,7 @@ const companyLinks = [
   { href: "/dashboard", label: "My Company Overview", icon: Gauge },
   { href: "/dashboard/knowledge-base", label: "Knowledge Base", icon: FileText },
   { href: "/dashboard/api-keys", label: "Bot Access Code", icon: KeyRound },
+  { href: "/dashboard/workflow-tokens", label: "Workflow HTTP", icon: Cable },
   { href: "/dashboard/playground", label: "Test AI Answers", icon: MessageSquare },
   { href: "/dashboard/usage", label: "Usage", icon: Activity },
   { href: "/dashboard/conversations", label: "Employee Conversations", icon: MessageSquare },

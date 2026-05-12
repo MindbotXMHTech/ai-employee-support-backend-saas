@@ -95,6 +95,7 @@ export async function tenantManagementData(tenantId: string) {
     { data: tenant },
     { data: profile },
     { data: apiKeys },
+    { data: workflowTokens },
     { data: documents },
     { data: conversations },
     { data: escalation },
@@ -106,6 +107,11 @@ export async function tenantManagementData(tenantId: string) {
       supabase
         .from("api_keys")
         .select("id, name, key_prefix, status, last_used_at, created_at")
+        .eq("tenant_id", tenantId)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("workflow_tokens")
+        .select("id, name, token_prefix, status, last_used_at, created_at")
         .eq("tenant_id", tenantId)
         .order("created_at", { ascending: false }),
       supabase.from("documents").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false }),
@@ -120,6 +126,7 @@ export async function tenantManagementData(tenantId: string) {
     tenant,
     profile,
     apiKeys: apiKeys ?? [],
+    workflowTokens: workflowTokens ?? [],
     documents: documents ?? [],
     conversations: conversations ?? [],
     escalation,

@@ -12,6 +12,8 @@ export const chatRequestSchema = z.object({
   conversation_id: z.string().max(255).optional(),
   bot_id: z.string().uuid().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
+  /** Tenant-scoped token when the client cannot set `x-central-bot-secret` (e.g. some workflow HTTP nodes). Omit from downstream chat handling. */
+  workflow_token: z.string().min(1).max(512).optional(),
 });
 
 export const chatV2RequestSchema = z.object({

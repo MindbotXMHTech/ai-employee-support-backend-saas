@@ -3,6 +3,7 @@ import { env } from "@/lib/env";
 import type { Tenant } from "@/lib/types";
 import crypto from "node:crypto";
 import { ensureCompanyCodeForTenant } from "@/lib/services/companyCodeService";
+import { pushMindbloomCompanyProvision } from "@/lib/services/mindbloomProvisionService";
 import { getPlatformAiSettings } from "@/lib/services/platformAiSettingsService";
 
 export function planDefaults(plan: "trial" | "pro") {
@@ -193,6 +194,14 @@ export async function createTenantOnboarding(input: {
       slug,
       plan: input.plan,
     },
+  });
+
+  void pushMindbloomCompanyProvision({
+    company_code: companyCode.code,
+    tenant_id: tenant.id,
+    tenant_name: tenant.name,
+  }).catch((error) => {
+    console.error("mindbloom_provision_unhandled", { tenant_id: tenant.id, error });
   });
 
   return {

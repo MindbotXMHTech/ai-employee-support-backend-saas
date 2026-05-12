@@ -33,7 +33,7 @@ Built:
 
 Not built:
 
-- LINE webhook adapter itself
+- Full-featured external LINE adapter service (retries, observability, queueing)
 - Chatbot UI
 - Payment gateway
 - Complex HRIS integration
@@ -87,13 +87,35 @@ Install dependencies:
 npm install
 ```
 
-Create local env:
+Start local Supabase (Docker) and apply migrations plus `supabase/seed.sql`:
 
 ```bash
-cp .env.example .env.local
+npx supabase start
 ```
 
-Run dev server:
+To wipe the local database and re-run migrations and seed:
+
+```bash
+npx supabase db reset
+```
+
+Create local env (point URLs and keys at the local stack from `npx supabase status`):
+
+```bash
+cp .env.example .env
+```
+
+With Supabase CLI 2.x, `status` prints **Publishable** and **Secret** keys (`sb_publishable_*` / `sb_secret_*`). Put the Publishable value in `NEXT_PUBLIC_SUPABASE_ANON_KEY` and the Secret in `SUPABASE_SERVICE_ROLE_KEY` in the same edit—do not mix them with the older demo JWT anon key (`eyJ...`) or PostgREST may return `PGRST301`.
+
+Run dev server (loads `.env` first — useful with local Supabase):
+
+```bash
+npm run dev:local -- -p 4000
+```
+
+If **`.env.local` exists**, Next.js still loads it in development (`Environments: .env.local, .env`). For any **duplicate variable name**, **`.env.local` wins** over `.env`. So either: keep Supabase keys in **only one** of the two files, or give them the **same** values in both. Otherwise `npm run dev:local` can look like it “uses `.env`” while runtime still picks remote/wrong keys from `.env.local`.
+
+Or without forcing `.env` load order:
 
 ```bash
 npm run dev -- -p 4000
@@ -103,9 +125,20 @@ Open:
 
 - App: `http://localhost:4000`
 - Login: `http://localhost:4000/login`
-- First platform admin setup: `http://localhost:4000/setup/platform-admin`
+- First platform admin setup: `http://localhost:4000/setup/platform-admin` (hosted / non-seeded projects)
 - Platform dashboard: `http://localhost:4000/platform`
 - Company dashboard: `http://localhost:4000/dashboard`
+
+### Local admin login (seeded)
+
+After `supabase start` or `supabase db reset`, the seed creates **one** platform admin if no `platform_admin` row exists yet in `public.users`:
+
+| Field    | Value |
+| -------- | ----- |
+| Email    | `platform-admin@local.dev` |
+| Password | `LocalDev123!` |
+
+Use these on `/login` with local Supabase and an `.env` that matches `npx supabase status` (project URL, anon key, service role key). This account is for **local development only**; do not rely on it on hosted Supabase (seed is not applied the same way on remote `db push`).
 
 ## API Documentation
 
@@ -129,7 +162,7 @@ To test chat in Postman:
 
 1. Import both files into Postman.
 2. Select the `AI Employee Support Bot - Local` environment.
-3. Set `central_bot_secret` from `.env.local` (`CENTRAL_BOT_SECRET`).
+3. Set `central_bot_secret` from `.env` or `.env.local` (`CENTRAL_BOT_SECRET`).
 4. Set `company_code` from the tenant detail page in Platform Admin.
 5. Run `1. Register LINE User With Company Code`.
 6. Run `3. Chat - Linked User` to test normal chat.
@@ -158,6 +191,13 @@ API_KEY_SECRET=
 CENTRAL_BOT_SECRET=
 ```
 
+Optional — **Mindbloom company mirror** after Platform Admin creates a tenant (`createTenantOnboarding`). When both are set, SaaS `POST`s to Mindbloom Edge `saas-company-provision` with retries (best-effort; onboarding still succeeds if Mindbloom is down). Use the same bearer value as Mindbloom secret `SAAS_PROVISION_SECRET`.
+
+```env
+MINDBLOOM_PROVISION_URL=https://<project-ref>.supabase.co/functions/v1/saas-company-provision
+MINDBLOOM_PROVISION_SECRET=
+```
+
 Optional model env fallbacks:
 
 ```env
@@ -170,7 +210,8 @@ AI_MODEL_EMBEDDING=text-embedding-3-small
 Notes:
 
 - `SUPABASE_SERVICE_ROLE_KEY` is server-only. Never expose it to browser code.
-- `CENTRAL_BOT_SECRET` is used by the central LINE bot backend when calling this platform.
+- `CENTRAL_BOT_SECRET` is used by trusted central bot backend calls to `/api/v1/*`.
+- `MINDBLOOM_PROVISION_URL` / `MINDBLOOM_PROVISION_SECRET` are server-only; used to notify Mindbloom after tenant onboarding. Omit both to disable.
 - `API_KEY_SECRET` is used only for legacy tenant API key hashing.
 - Model values can also be controlled per tenant by Platform Admin in the UI.
 
@@ -189,6 +230,11 @@ Current migration themes:
 - `0003_backfill_tenant_company_codes.sql` - company code backfill for existing tenants
 - `0004_platform_ai_settings.sql` - platform AI setting fields
 - `0005_tenant_ai_settings.sql` - per-tenant AI setting fields and RLS update
+- `0006_workflow_tokens.sql` - tenant-scoped workflow tokens for headerless HTTP clients
+
+Link the CLI to your hosted project once (`supabase login`, then `supabase link --project-ref …` — see comments in [`.env.example`](.env.example)). Use the same Supabase API values in `.env` or `.env.local` for the app.
+
+Local seed data lives in [`supabase/seed.sql`](supabase/seed.sql) (one seeded platform admin; see **Local admin login (seeded)** above). It runs after migrations on `supabase db reset` and on first `supabase start` for a fresh volume.
 
 Push pending migrations:
 
@@ -390,11 +436,14 @@ Response:
   "success": true,
   "tenant_id": "uuid",
   "tenant_name": "Company Name",
+  "company_code": "ABCD123",
   "link_id": "uuid",
   "external_user_id": "Uxxxxxxxxxxxxxxxx",
   "channel": "line"
 }
 ```
+
+`company_code` is the **normalized** value (trimmed, uppercase) used for the `tenant_company_codes` row. Downstream mirrors (for example Mindbloom company upsert after register) should key on this field rather than re-parsing the request body.
 
 What gets stored:
 
@@ -410,7 +459,23 @@ What gets stored:
 POST /api/v1/chat
 ```
 
-Request after registration:
+For HTTP clients that **cannot set custom headers** (some workflow builders), send a **tenant-scoped `workflow_token`** in the same JSON body to `POST /api/v1/chat`. Create tokens in the admin UI (`/dashboard/workflow-tokens` or Platform Admin → tenant → **Workflow HTTP**) or via `POST /api/admin/workflow-tokens`; the raw value is returned once as `rawToken`. Do not put `CENTRAL_BOT_SECRET` in the body.
+
+```bash
+curl -X POST http://localhost:4000/api/v1/chat \
+  -H "content-type: application/json" \
+  -d '{
+    "workflow_token": "wf_live_...",
+    "external_user_id": "Uxxxxxxxxxxxxxxxx",
+    "channel": "line",
+    "company_code": "ABCD123",
+    "message": "ลาป่วยได้กี่วัน"
+  }'
+```
+
+`company_code` is required on first contact for that `external_user_id` + `channel` unless the user is already linked; the code must belong to the same tenant as the workflow token.
+
+Request after registration (central bot, header auth):
 
 ```bash
 curl -X POST http://localhost:4000/api/v1/chat \
@@ -574,13 +639,13 @@ Usage is logged in `usage_logs`. Assistant messages are counted against quota.
 
 ## LINE Bot Integration Notes
 
-Recommended LINE webhook flow:
+Integrate LINE by running a **separate adapter** (your own service, LINE Messaging API SDK, or another app) that receives LINE events and calls this SaaS over HTTPS:
 
-1. Receive LINE webhook event.
+1. Receive LINE webhook event on your adapter.
 2. Extract LINE `userId` as `external_user_id`.
 3. Use `channel = "line"`.
 4. If user sends a company code or registration command, call `/api/v1/register`.
-5. For normal messages, call `/api/v1/chat`.
+5. For normal messages, call `/api/v1/chat` (include `workflow_token` in JSON if the client cannot set `x-central-bot-secret`).
 6. Send `reply` from API response back to LINE.
 7. If `handoff_required` or `handoff.enabled` is true, show handoff URL/button/message in LINE UX if supported.
 
@@ -634,6 +699,9 @@ Admin routes require Supabase Auth session cookies.
 - `POST /api/admin/playground`
 - `POST /api/admin/api-keys`
 - `DELETE /api/admin/api-keys/[id]`
+- `GET /api/admin/workflow-tokens?tenant_id=...`
+- `POST /api/admin/workflow-tokens`
+- `DELETE /api/admin/workflow-tokens/[id]`
 - `PATCH /api/admin/platform-ai-settings` (legacy/global fallback page redirects away)
 
 ## Important Pages
@@ -646,6 +714,7 @@ Platform Admin:
 - `/platform/tenants/[id]/ai-settings`
 - `/platform/tenants/[id]/knowledge-base`
 - `/platform/tenants/[id]/employees`
+- `/platform/tenants/[id]/workflow-tokens`
 - `/platform/tenants/[id]/usage`
 - `/platform/tenants/[id]/conversations`
 - `/platform/tenants/[id]/safety`
@@ -662,12 +731,14 @@ Company Admin:
 - `/dashboard/safety`
 - `/dashboard/settings/company-profile`
 - `/dashboard/api-keys` (company code / bot access instructions)
+- `/dashboard/workflow-tokens` (workflow HTTP tokens for headerless clients)
 
 Company Admin does not have AI settings access.
 
 ## Development Commands
 
 ```bash
+npm run dev:local -- -p 4000
 npm run dev -- -p 4000
 npm run lint
 npm test
@@ -681,10 +752,11 @@ Latest verification after recent changes:
 - `npm run lint` passed
 - `npm test` passed
 - `npm run build` passed
-- Supabase migrations up to `0005_tenant_ai_settings.sql` pushed successfully
+- Supabase migrations up to `0006_workflow_tokens.sql` pushed successfully
 
 ## Security Notes
 
+- Some workflow tools cannot attach bot headers. Send a per-tenant **`workflow_token`** in the JSON body of **`POST /api/v1/chat`** (create in **Workflow HTTP** admin UI or `POST /api/admin/workflow-tokens`). Never put `CENTRAL_BOT_SECRET` in JSON bodies.
 - Never expose `SUPABASE_SERVICE_ROLE_KEY`, `CENTRAL_BOT_SECRET`, or `API_KEY_SECRET` in browser code.
 - Only variables prefixed with `NEXT_PUBLIC_` are safe for browser exposure.
 - Bot-facing central endpoints must be called from trusted bot backend code, not directly from LINE client/user devices.
@@ -698,4 +770,3 @@ Latest verification after recent changes:
 - Replace placeholder model names with model IDs available in the OpenAI account if needed.
 - Keep `model_pricing` updated for any model used in AI settings so cost tracking remains accurate.
 - Add production rate limiting for bot-facing endpoints before public deployment.
-- Add LINE webhook adapter service that maps LINE events to `/api/v1/register` and `/api/v1/chat`.

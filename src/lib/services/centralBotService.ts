@@ -92,6 +92,8 @@ export async function registerEmployeeTenantLink(input: {
     link,
     tenant,
     companyCode,
+    /** Uppercase trimmed code used for `tenant_company_codes` lookup (Mindbloom lazy mirror / MB-771). */
+    normalizedCompanyCode: normalizedCode,
   };
 }
 
