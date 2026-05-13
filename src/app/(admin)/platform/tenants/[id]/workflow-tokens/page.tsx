@@ -29,7 +29,7 @@ export default async function PlatformTenantWorkflowTokensPage({ params }: { par
       </Button>
       <PageHeader
         title="Workflow HTTP tokens"
-        description="Tokens for automation tools that cannot send x-central-bot-secret as a header. Use workflow_token in POST /api/v1/chat JSON."
+        description="Tokens for automation tools that cannot send x-central-bot-secret as a header. Use workflow_token in POST /api/v2/chat JSON."
       />
       <PlatformTenantNav tenantId={id} active="/workflow-tokens" />
       <Card>

@@ -61,6 +61,12 @@
       "value": "optional-legacy-x-api-key",
       "type": "secret",
       "enabled": true
+    },
+    {
+      "key": "workflow_token",
+      "value": "wf_live_replace-after-create-in-admin",
+      "type": "secret",
+      "enabled": true
     }
   ],
   "_postman_variable_scope": "environment",

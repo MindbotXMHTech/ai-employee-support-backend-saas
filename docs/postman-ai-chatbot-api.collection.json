@@ -93,6 +93,34 @@
           }
         },
         {
+          "name": "2b. V2 Chat - Workflow token (no central header)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"workflow_token\": \"{{workflow_token}}\",\n  \"user_id\": \"{{external_user_id}}\",\n  \"message\": \"อยากคุยด้วย\",\n  \"company_code\": \"{{company_code}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v2/chat",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "chat"
+              ]
+            },
+            "description": "For Make.com / Zapier-style nodes that cannot set x-central-bot-secret. Create a token in Workflow HTTP, set {{workflow_token}} in the environment, then call this (same v2 body fields as the central-header variant)."
+          }
+        },
+        {
           "name": "2. Chat - First Call With Company Code",
           "request": {
             "method": "POST",

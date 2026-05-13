@@ -167,11 +167,13 @@ To test chat in Postman:
 5. Run `1. Register LINE User With Company Code`.
 6. Run `3. Chat - Linked User` to test normal chat.
 
-For a simplified integration flow, use `/api/v2/chat` with only:
+For a simplified LINE-shaped flow, use `/api/v2/chat` with:
 
 - `user_id`
 - `message`
 - `company_code`
+
+Use `x-central-bot-secret` as usual. If the client cannot set that header, send **`workflow_token`** in the same JSON body (v2 only).
 
 ## Environment Variables
 
@@ -459,21 +461,20 @@ What gets stored:
 POST /api/v1/chat
 ```
 
-For HTTP clients that **cannot set custom headers** (some workflow builders), send a **tenant-scoped `workflow_token`** in the same JSON body to `POST /api/v1/chat`. Create tokens in the admin UI (`/dashboard/workflow-tokens` or Platform Admin → tenant → **Workflow HTTP**) or via `POST /api/admin/workflow-tokens`; the raw value is returned once as `rawToken`. Do not put `CENTRAL_BOT_SECRET` in the body.
+For HTTP clients that **cannot set custom headers** (some workflow builders), send a **tenant-scoped `workflow_token`** in the JSON body of **`POST /api/v2/chat`** together with `user_id`, `message`, and `company_code`. Create tokens in the admin UI (`/dashboard/workflow-tokens` or Platform Admin → tenant → **Workflow HTTP**) or via `POST /api/admin/workflow-tokens`; the raw value is returned once as `rawToken`. Do not put `CENTRAL_BOT_SECRET` in JSON bodies.
 
 ```bash
-curl -X POST http://localhost:4000/api/v1/chat \
+curl -X POST http://localhost:4000/api/v2/chat \
   -H "content-type: application/json" \
   -d '{
     "workflow_token": "wf_live_...",
-    "external_user_id": "Uxxxxxxxxxxxxxxxx",
-    "channel": "line",
-    "company_code": "ABCD123",
-    "message": "ลาป่วยได้กี่วัน"
+    "user_id": "Uxxxxxxxxxxxxxxxx",
+    "message": "ลาป่วยได้กี่วัน",
+    "company_code": "ABCD123"
   }'
 ```
 
-`company_code` is required on first contact for that `external_user_id` + `channel` unless the user is already linked; the code must belong to the same tenant as the workflow token.
+`company_code` is required on first contact for that `user_id` unless the user is already linked; the code must belong to the same tenant as the workflow token.
 
 Request after registration (central bot, header auth):
 
@@ -645,7 +646,7 @@ Integrate LINE by running a **separate adapter** (your own service, LINE Messagi
 2. Extract LINE `userId` as `external_user_id`.
 3. Use `channel = "line"`.
 4. If user sends a company code or registration command, call `/api/v1/register`.
-5. For normal messages, call `/api/v1/chat` (include `workflow_token` in JSON if the client cannot set `x-central-bot-secret`).
+5. For normal messages, call `/api/v1/chat` with `x-central-bot-secret`, or `/api/v2/chat` with the same header. If the HTTP client cannot set headers, call **`POST /api/v2/chat`** with **`workflow_token`** in the JSON (not v1).
 6. Send `reply` from API response back to LINE.
 7. If `handoff_required` or `handoff.enabled` is true, show handoff URL/button/message in LINE UX if supported.
 
@@ -756,7 +757,7 @@ Latest verification after recent changes:
 
 ## Security Notes
 
-- Some workflow tools cannot attach bot headers. Send a per-tenant **`workflow_token`** in the JSON body of **`POST /api/v1/chat`** (create in **Workflow HTTP** admin UI or `POST /api/admin/workflow-tokens`). Never put `CENTRAL_BOT_SECRET` in JSON bodies.
+- Some workflow tools cannot attach bot headers. Send a per-tenant **`workflow_token`** in the JSON body of **`POST /api/v2/chat`** (create in **Workflow HTTP** admin UI or `POST /api/admin/workflow-tokens`). Never put `CENTRAL_BOT_SECRET` in JSON bodies.
 - Never expose `SUPABASE_SERVICE_ROLE_KEY`, `CENTRAL_BOT_SECRET`, or `API_KEY_SECRET` in browser code.
 - Only variables prefixed with `NEXT_PUBLIC_` are safe for browser exposure.
 - Bot-facing central endpoints must be called from trusted bot backend code, not directly from LINE client/user devices.

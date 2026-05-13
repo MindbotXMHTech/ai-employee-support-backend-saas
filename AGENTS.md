@@ -34,6 +34,8 @@ The bot is central, but all tenant data is separated by `tenant_id`.
 ## Important Architecture Rules
 
 - The intended bot integration uses `x-central-bot-secret` with `CENTRAL_BOT_SECRET`.
+- `POST /api/v1/chat` auth: `x-central-bot-secret` (central bot) **or** legacy `x-api-key` (per-tenant API key). No JSON-body secrets; never put `CENTRAL_BOT_SECRET` in JSON bodies.
+- `POST /api/v2/chat` (LINE-shaped body: `user_id`, `message`, `company_code`): `x-central-bot-secret` **or** optional JSON `workflow_token` for clients that cannot set headers (tenant-scoped; create in Workflow HTTP admin). Strip `workflow_token` before `handleChatRequest`.
 - Do not design new tenant-specific bot API key flows unless explicitly requested. Legacy `x-api-key` exists only for compatibility.
 - Never trust `tenant_id` from employee chat clients. Resolve tenant server-side from `employee_tenant_links` or `company_code`.
 - Tenant-scoped data must always include/filter by `tenant_id`.
@@ -50,6 +52,7 @@ Platform Admin can:
 - Manage each tenant AI settings
 - Upload/delete each tenant RAG documents
 - Manage model pricing and audit logs
+- Create/list/revoke workflow HTTP tokens for any tenant (`/platform/tenants/[tenant_id]/workflow-tokens`)
 
 Company Admin can:
 
@@ -58,6 +61,7 @@ Company Admin can:
 - View own usage/conversations
 - Manage own safety/handoff contacts
 - View company code / bot access instructions
+- Create/list/revoke own tenant workflow HTTP tokens (`/dashboard/workflow-tokens`)
 
 Company Admin cannot:
 
@@ -73,7 +77,8 @@ Tenant creation generates a `company_code`. LINE users register by sending that 
 Main bot-facing endpoints:
 
 - `POST /api/v1/register` - link `line_user_id` or `external_user_id` to a tenant using `company_code`
-- `POST /api/v1/chat` - send employee message and receive structured bot response
+- `POST /api/v1/chat` - send employee message and receive structured bot response (header auth only)
+- `POST /api/v2/chat` - simplified LINE-oriented chat; same orchestration after tenant resolve; supports `workflow_token` in JSON when headers are impossible
 - `GET /api/v1/config` - read tenant bot config after tenant resolution
 - `GET /api/v1/usage` - read tenant quota/usage after tenant resolution
 - `GET /api/v1/health` - uptime check
@@ -85,6 +90,8 @@ x-central-bot-secret: <CENTRAL_BOT_SECRET>
 ```
 
 Use `channel = "line"` and LINE `userId` as `external_user_id`.
+
+There is no in-repo LINE Messaging webhook route; an external adapter must call these APIs with `x-central-bot-secret`, or use `POST /api/v2/chat` with `workflow_token` in the JSON only when headers are impossible.
 
 ## AI Settings
 
@@ -142,8 +149,9 @@ Current important migrations:
 - `0003_backfill_tenant_company_codes.sql`
 - `0004_platform_ai_settings.sql`
 - `0005_tenant_ai_settings.sql`
+- `0006_workflow_tokens.sql`
 
-Use Supabase CLI carefully:
+Use Supabase CLI carefully (link the project once with `supabase link --project-ref …` if using a remote DB):
 
 ```bash
 supabase db push --dry-run
@@ -157,6 +165,7 @@ RLS is required for public schema tenant tables.
 - `src/lib/services/aiService.ts` - chat orchestration
 - `src/lib/services/platformAiSettingsService.ts` - tenant/platform AI settings resolver
 - `src/lib/services/centralBotService.ts` - central bot auth and tenant resolution helpers
+- `src/lib/services/workflowTokenService.ts` - workflow token hash/create/validate/revoke and workflow chat tenant resolution
 - `src/lib/services/ragService.ts` - embeddings, vector retrieval, source formatting
 - `src/lib/services/documentService.ts` - file validation, upload, extraction, chunking, embedding
 - `src/lib/services/tenantService.ts` - tenant lifecycle
