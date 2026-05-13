@@ -200,6 +200,7 @@ export async function createTenantOnboarding(input: {
     company_code: companyCode.code,
     tenant_id: tenant.id,
     tenant_name: tenant.name,
+    plan: tenant.plan,
   }).catch((error) => {
     console.error("mindbloom_provision_unhandled", { tenant_id: tenant.id, error });
   });

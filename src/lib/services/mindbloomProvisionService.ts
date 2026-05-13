@@ -7,6 +7,7 @@ export type MindbloomProvisionPayload = {
   company_code: string;
   tenant_id: string;
   tenant_name: string;
+  plan: "trial" | "pro";
   /** Optional; when omitted or empty, Mindbloom leaves departments unchanged. */
   departments?: string[];
 };
@@ -32,6 +33,7 @@ export async function pushMindbloomCompanyProvision(input: MindbloomProvisionPay
     company_code: input.company_code.trim().toUpperCase(),
     tenant_id: input.tenant_id,
     tenant_name: input.tenant_name,
+    plan: input.plan,
     departments: input.departments ?? [],
   };
 

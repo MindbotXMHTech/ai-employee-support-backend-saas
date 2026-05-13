@@ -193,7 +193,7 @@ API_KEY_SECRET=
 CENTRAL_BOT_SECRET=
 ```
 
-Optional — **Mindbloom company mirror** after Platform Admin creates a tenant (`createTenantOnboarding`). When both are set, SaaS `POST`s to Mindbloom Edge `saas-company-provision` with retries (best-effort; onboarding still succeeds if Mindbloom is down). Use the same bearer value as Mindbloom secret `SAAS_PROVISION_SECRET`.
+Optional — **Mindbloom company mirror** after Platform Admin creates a tenant (`createTenantOnboarding`). When both are set, SaaS `POST`s to Mindbloom Edge `saas-company-provision` with `company_code`, `tenant_id`, `tenant_name`, `plan`, and `departments`, with retries (best-effort; onboarding still succeeds if Mindbloom is down). Use the same bearer value as Mindbloom secret `SAAS_PROVISION_SECRET`.
 
 ```env
 MINDBLOOM_PROVISION_URL=https://<project-ref>.supabase.co/functions/v1/saas-company-provision
