@@ -6,7 +6,7 @@ import { ensureCompanyCodeForTenant } from "@/lib/services/companyCodeService";
 import { pushMindbloomCompanyProvision } from "@/lib/services/mindbloomProvisionService";
 import { getPlatformAiSettings } from "@/lib/services/platformAiSettingsService";
 
-export function planDefaults(plan: "trial" | "pro") {
+export function planDefaults(plan: "free" | "trial" | "pro") {
   if (plan === "pro") {
     return {
       monthly_message_limit: env.DEFAULT_PRO_MESSAGE_LIMIT,
@@ -26,31 +26,174 @@ export function planDefaults(plan: "trial" | "pro") {
 
 export async function getTenant(tenantId: string) {
   const supabase = createSupabaseServiceClient();
-  const { data, error } = await supabase.from("tenants").select("*").eq("id", tenantId).single();
+  const { data, error } = await supabase
+    .from("tenants")
+    .select("*")
+    .eq("id", tenantId)
+    .single();
   if (error) throw error;
   return data as Tenant;
 }
 
-export async function enforceTenantAvailability(tenant: Tenant) {
+async function pushTenantPlanMirror(tenant: Tenant) {
   const supabase = createSupabaseServiceClient();
+  const { data: companyCode, error } = await supabase
+    .from("tenant_company_codes")
+    .select("code")
+    .eq("tenant_id", tenant.id)
+    .eq("status", "active")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
 
+  if (error) throw error;
+  if (!companyCode?.code) return false;
+
+  await pushMindbloomCompanyProvision({
+    company_code: companyCode.code,
+    tenant_id: tenant.id,
+    tenant_name: tenant.name,
+    plan: tenant.plan,
+  });
+  return true;
+}
+
+export async function downgradeTrialTenantToFree(input: {
+  tenantId: string;
+  actorUserId?: string | null;
+  source?: string;
+  now?: Date;
+}) {
+  const supabase = createSupabaseServiceClient();
+  const now = input.now ?? new Date();
+  const { data: tenant, error: tenantError } = await supabase
+    .from("tenants")
+    .select("*")
+    .eq("id", input.tenantId)
+    .maybeSingle();
+
+  if (tenantError) throw tenantError;
+  if (!tenant) return { ok: false as const, code: "NOT_FOUND" as const };
+  if (tenant.plan !== "trial") {
+    return {
+      ok: false as const,
+      code: "NOT_TRIAL" as const,
+      tenant: tenant as Tenant,
+    };
+  }
+  if (tenant.trial_ends_at && new Date(tenant.trial_ends_at) > now) {
+    return {
+      ok: false as const,
+      code: "TRIAL_ACTIVE" as const,
+      tenant: tenant as Tenant,
+    };
+  }
+
+  const { data: updated, error: updateError } = await supabase
+    .from("tenants")
+    .update({ plan: "free", status: "expired" })
+    .eq("id", input.tenantId)
+    .eq("plan", "trial")
+    .select("*")
+    .single();
+
+  if (updateError) throw updateError;
+  const updatedTenant = updated as Tenant;
+
+  await supabase.from("audit_logs").insert({
+    tenant_id: updatedTenant.id,
+    actor_user_id: input.actorUserId ?? null,
+    action: "tenant.trial_downgraded_to_free",
+    target_type: "tenant",
+    target_id: updatedTenant.id,
+    metadata: {
+      source: input.source ?? "trial_expiry",
+      previous_plan: "trial",
+      new_plan: "free",
+      trial_ends_at: tenant.trial_ends_at,
+    },
+  });
+
+  const synced = await pushTenantPlanMirror(updatedTenant);
+  return { ok: true as const, tenant: updatedTenant, synced };
+}
+
+export async function downgradeExpiredTrialTenantsToFree(
+  input: {
+    actorUserId?: string | null;
+    source?: string;
+    now?: Date;
+  } = {},
+) {
+  const supabase = createSupabaseServiceClient();
+  const now = input.now ?? new Date();
+  const { data: tenants, error } = await supabase
+    .from("tenants")
+    .select("id")
+    .eq("plan", "trial")
+    .eq("status", "active")
+    .not("trial_ends_at", "is", null)
+    .lte("trial_ends_at", now.toISOString());
+
+  if (error) throw error;
+
+  const results = [];
+  for (const tenant of tenants ?? []) {
+    results.push(
+      await downgradeTrialTenantToFree({
+        tenantId: tenant.id as string,
+        actorUserId: input.actorUserId,
+        source: input.source ?? "scheduled_trial_expiry",
+        now,
+      }),
+    );
+  }
+
+  return {
+    checked: tenants?.length ?? 0,
+    downgraded: results.filter((result) => result.ok).length,
+    synced: results.filter((result) => result.ok && result.synced).length,
+    results,
+  };
+}
+
+export async function enforceTenantAvailability(tenant: Tenant) {
   if (tenant.status === "suspended") {
-    return { ok: false as const, code: "TENANT_SUSPENDED" as const, message: "Tenant is suspended." };
+    return {
+      ok: false as const,
+      code: "TENANT_SUSPENDED" as const,
+      message: "Tenant is suspended.",
+    };
   }
 
-  if (tenant.plan === "trial" && tenant.trial_ends_at && new Date(tenant.trial_ends_at) < new Date()) {
-    await supabase.from("tenants").update({ status: "expired" }).eq("id", tenant.id);
-    return { ok: false as const, code: "TRIAL_EXPIRED" as const, message: "Trial has expired." };
+  if (
+    tenant.plan === "trial" &&
+    tenant.trial_ends_at &&
+    new Date(tenant.trial_ends_at) < new Date()
+  ) {
+    await downgradeTrialTenantToFree({
+      tenantId: tenant.id,
+      source: "chat_availability_check",
+    });
+    return { ok: true as const };
   }
 
-  if (tenant.status === "expired") {
-    return { ok: false as const, code: "TRIAL_EXPIRED" as const, message: "Tenant plan has expired." };
+  if (tenant.status === "expired" || tenant.plan === "free") {
+    return {
+      ok: false as const,
+      code: "TRIAL_EXPIRED" as const,
+      message: "Free plan is not available for chat.",
+    };
   }
 
   return { ok: true as const };
 }
 
-export async function createTenant(input: { name: string; slug: string; plan: "trial" | "pro" }) {
+export async function createTenant(input: {
+  name: string;
+  slug: string;
+  plan: "free" | "trial" | "pro";
+}) {
   const supabase = createSupabaseServiceClient();
   const now = new Date();
   const trialEndsAt = new Date(now);
@@ -72,7 +215,9 @@ export async function createTenant(input: { name: string; slug: string; plan: "t
     .single();
 
   if (error) throw error;
-  await supabase.from("tenant_profiles").insert({ tenant_id: data.id, company_name: input.name });
+  await supabase
+    .from("tenant_profiles")
+    .insert({ tenant_id: data.id, company_name: input.name });
   const aiDefaults = await getPlatformAiSettings();
   await supabase.from("bot_settings").insert({
     tenant_id: data.id,
@@ -112,7 +257,11 @@ async function generateUniqueTenantSlug(baseName: string) {
   let suffix = 2;
 
   while (true) {
-    const { data } = await supabase.from("tenants").select("id").eq("slug", slug).maybeSingle();
+    const { data } = await supabase
+      .from("tenants")
+      .select("id")
+      .eq("slug", slug)
+      .maybeSingle();
     if (!data) return slug;
     slug = `${baseSlug}-${suffix}`;
     suffix += 1;
@@ -121,7 +270,7 @@ async function generateUniqueTenantSlug(baseName: string) {
 
 export async function createTenantOnboarding(input: {
   name: string;
-  plan: "trial" | "pro";
+  plan: "free" | "trial" | "pro";
   industry?: string;
   company_description?: string;
   hr_contact_name?: string;
@@ -132,17 +281,22 @@ export async function createTenantOnboarding(input: {
 }) {
   const supabase = createSupabaseServiceClient();
   const slug = await generateUniqueTenantSlug(input.name);
-  const tenant = await createTenant({ name: input.name, slug, plan: input.plan });
+  const tenant = await createTenant({
+    name: input.name,
+    slug,
+    plan: input.plan,
+  });
   const temporaryPassword = crypto.randomBytes(12).toString("base64url");
 
-  const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
-    email: input.admin_email,
-    password: temporaryPassword,
-    email_confirm: true,
-    user_metadata: {
-      display_name: input.admin_display_name,
-    },
-  });
+  const { data: authUser, error: authError } =
+    await supabase.auth.admin.createUser({
+      email: input.admin_email,
+      password: temporaryPassword,
+      email_confirm: true,
+      user_metadata: {
+        display_name: input.admin_display_name,
+      },
+    });
   if (authError) throw authError;
 
   const { data: appUser, error: userError } = await supabase
@@ -200,8 +354,12 @@ export async function createTenantOnboarding(input: {
     company_code: companyCode.code,
     tenant_id: tenant.id,
     tenant_name: tenant.name,
+    plan: tenant.plan,
   }).catch((error) => {
-    console.error("mindbloom_provision_unhandled", { tenant_id: tenant.id, error });
+    console.error("mindbloom_provision_unhandled", {
+      tenant_id: tenant.id,
+      error,
+    });
   });
 
   return {
@@ -212,7 +370,10 @@ export async function createTenantOnboarding(input: {
   };
 }
 
-export async function deleteTenantById(input: { tenantId: string; actorUserId?: string | null }) {
+export async function deleteTenantById(input: {
+  tenantId: string;
+  actorUserId?: string | null;
+}) {
   const supabase = createSupabaseServiceClient();
 
   const { data: tenant } = await supabase
@@ -248,12 +409,17 @@ export async function deleteTenantById(input: { tenantId: string; actorUserId?: 
     await supabase.storage.from("tenant-documents").remove(storagePaths);
   }
 
-  const { error: deleteError } = await supabase.from("tenants").delete().eq("id", input.tenantId);
+  const { error: deleteError } = await supabase
+    .from("tenants")
+    .delete()
+    .eq("id", input.tenantId);
   if (deleteError) throw deleteError;
 
   for (const member of members ?? []) {
     const userId = member.user_id as string;
-    const userRecord = Array.isArray(member.users) ? member.users[0] : member.users;
+    const userRecord = Array.isArray(member.users)
+      ? member.users[0]
+      : member.users;
     const authUserId = userRecord?.auth_user_id as string | undefined;
     if (!authUserId) continue;
 

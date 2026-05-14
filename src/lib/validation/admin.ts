@@ -14,7 +14,7 @@ export const tenantFormSchema = z.object({
 
 export const tenantUpdateSchema = z.object({
   name: z.string().min(1).optional(),
-  plan: z.enum(["trial", "pro"]).optional(),
+  plan: z.enum(["free", "trial", "pro"]).optional(),
   status: z.enum(["active", "suspended", "expired"]).optional(),
   monthly_message_limit: z.coerce.number().int().positive().optional(),
   storage_limit_mb: z.coerce.number().int().positive().optional(),

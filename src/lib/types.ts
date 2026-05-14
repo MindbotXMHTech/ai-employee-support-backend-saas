@@ -1,4 +1,4 @@
-export type TenantPlan = "trial" | "pro";
+export type TenantPlan = "free" | "trial" | "pro";
 export type TenantStatus = "active" | "suspended" | "expired";
 export type UserRole = "platform_admin" | "tenant_admin";
 export type MessageRole = "user" | "assistant" | "system";
@@ -11,8 +11,20 @@ export type MessageType =
   | "out_of_scope"
   | "quota_exceeded";
 export type SafetyLevel = "normal" | "medium" | "high" | "crisis";
-export type RequestType = "general" | "rag" | "embedding" | "safety" | "classification" | "playground";
-export type DocumentCategory = "benefits" | "welfare" | "leave_policy" | "insurance" | "hr_faq" | "other";
+export type RequestType =
+  | "general"
+  | "rag"
+  | "embedding"
+  | "safety"
+  | "classification"
+  | "playground";
+export type DocumentCategory =
+  | "benefits"
+  | "welfare"
+  | "leave_policy"
+  | "insurance"
+  | "hr_faq"
+  | "other";
 export type DocumentStatus = "uploaded" | "processing" | "ready" | "failed";
 export type ClassificationCategory =
   | "welfare_rag"

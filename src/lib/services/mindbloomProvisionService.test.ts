@@ -18,6 +18,7 @@ describe("pushMindbloomCompanyProvision", () => {
       company_code: "AB12",
       tenant_id: "00000000-0000-4000-8000-000000000001",
       tenant_name: "Acme",
+      plan: "trial",
     });
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
@@ -45,6 +46,7 @@ describe("pushMindbloomCompanyProvision", () => {
       company_code: "ab12",
       tenant_id: "00000000-0000-4000-8000-000000000001",
       tenant_name: "Acme",
+      plan: "pro",
     });
 
     expect(calls).toBe(2);
@@ -54,6 +56,13 @@ describe("pushMindbloomCompanyProvision", () => {
         method: "POST",
         headers: expect.objectContaining({
           Authorization: "Bearer test-secret-value-12345",
+        }),
+        body: JSON.stringify({
+          company_code: "AB12",
+          tenant_id: "00000000-0000-4000-8000-000000000001",
+          tenant_name: "Acme",
+          plan: "pro",
+          departments: [],
         }),
       }),
     );

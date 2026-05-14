@@ -64,7 +64,8 @@ export function TenantManagementForm({
       <div className="space-y-2">
         <Label htmlFor="plan">Plan</Label>
         <SelectNative id="plan" name="plan" defaultValue={tenant.plan}>
-          <option value="trial">Trial - 7 days / 500 messages</option>
+          <option value="free">Free</option>
+          <option value="trial">Trial - 35 days / 500 messages</option>
           <option value="pro">Pro - 30,000 messages/month</option>
         </SelectNative>
       </div>

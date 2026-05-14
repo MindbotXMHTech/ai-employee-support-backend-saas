@@ -133,10 +133,10 @@ Open:
 
 After `supabase start` or `supabase db reset`, the seed creates **one** platform admin if no `platform_admin` row exists yet in `public.users`:
 
-| Field    | Value |
-| -------- | ----- |
+| Field    | Value                      |
+| -------- | -------------------------- |
 | Email    | `platform-admin@local.dev` |
-| Password | `LocalDev123!` |
+| Password | `LocalDev123!`             |
 
 Use these on `/login` with local Supabase and an `.env` that matches `npx supabase status` (project URL, anon key, service role key). This account is for **local development only**; do not rely on it on hosted Supabase (seed is not applied the same way on remote `db push`).
 
@@ -185,15 +185,16 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 OPENAI_API_KEY=
 APP_URL=http://localhost:4000
-DEFAULT_TRIAL_DAYS=7
+DEFAULT_TRIAL_DAYS=35
 DEFAULT_TRIAL_MESSAGE_LIMIT=500
 DEFAULT_PRO_MESSAGE_LIMIT=30000
 DEFAULT_MAX_SENTENCES=5
 API_KEY_SECRET=
 CENTRAL_BOT_SECRET=
+CRON_SECRET=
 ```
 
-Optional — **Mindbloom company mirror** after Platform Admin creates a tenant (`createTenantOnboarding`). When both are set, SaaS `POST`s to Mindbloom Edge `saas-company-provision` with retries (best-effort; onboarding still succeeds if Mindbloom is down). Use the same bearer value as Mindbloom secret `SAAS_PROVISION_SECRET`.
+Optional — **Mindbloom company mirror** after Platform Admin creates a tenant (`createTenantOnboarding`). When both are set, SaaS `POST`s to Mindbloom Edge `saas-company-provision` with `company_code`, `tenant_id`, `tenant_name`, `plan`, and `departments`, with retries (best-effort; onboarding still succeeds if Mindbloom is down). Use the same bearer value as Mindbloom secret `SAAS_PROVISION_SECRET`.
 
 ```env
 MINDBLOOM_PROVISION_URL=https://<project-ref>.supabase.co/functions/v1/saas-company-provision
@@ -213,6 +214,7 @@ Notes:
 
 - `SUPABASE_SERVICE_ROLE_KEY` is server-only. Never expose it to browser code.
 - `CENTRAL_BOT_SECRET` is used by trusted central bot backend calls to `/api/v1/*`.
+- `CRON_SECRET` is used by scheduled jobs such as `/api/jobs/expire-trials`.
 - `MINDBLOOM_PROVISION_URL` / `MINDBLOOM_PROVISION_SECRET` are server-only; used to notify Mindbloom after tenant onboarding. Omit both to disable.
 - `API_KEY_SECRET` is used only for legacy tenant API key hashing.
 - Model values can also be controlled per tenant by Platform Admin in the UI.
@@ -233,6 +235,7 @@ Current migration themes:
 - `0004_platform_ai_settings.sql` - platform AI setting fields
 - `0005_tenant_ai_settings.sql` - per-tenant AI setting fields and RLS update
 - `0006_workflow_tokens.sql` - tenant-scoped workflow tokens for headerless HTTP clients
+- `0007_free_plan_trial_downgrade.sql` - allows the `free` tenant plan for automatic trial downgrade
 
 Link the CLI to your hosted project once (`supabase login`, then `supabase link --project-ref …` — see comments in [`.env.example`](.env.example)). Use the same Supabase API values in `.env` or `.env.local` for the app.
 
@@ -244,6 +247,17 @@ Push pending migrations:
 supabase db push --dry-run
 supabase db push --yes
 ```
+
+## Scheduled Jobs
+
+Expire active trials and downgrade them to `free`:
+
+```http
+POST /api/jobs/expire-trials
+Authorization: Bearer <CRON_SECRET>
+```
+
+Run this from your hosting scheduler or any trusted cron service at least once per day. The job finds active tenants where `plan = "trial"` and `trial_ends_at <= now()`, changes them to `plan = "free"` and `status = "expired"`, inserts an audit log, and pushes the updated plan to the configured Mindbloom provisioning endpoint.
 
 Important tables:
 
@@ -625,7 +639,15 @@ The prompt chooses Thai, English, or both-language behavior based on that settin
 
 Trial defaults:
 
-- 7 days
+- 35 days
+- 500 messages
+- 10 files
+- 50 MB storage
+
+When an active trial tenant reaches `trial_ends_at`, the scheduled `/api/jobs/expire-trials` job changes the tenant plan to `free`, sets `status = "expired"` to block chat, writes an audit log, and sends the updated `plan` to the Mindbloom company mirror when provisioning env vars are configured. The chat availability check also performs the same downgrade for that tenant if a scheduler is late.
+
+Free defaults:
+
 - 500 messages
 - 10 files
 - 50 MB storage
@@ -753,7 +775,7 @@ Latest verification after recent changes:
 - `npm run lint` passed
 - `npm test` passed
 - `npm run build` passed
-- Supabase migrations up to `0006_workflow_tokens.sql` pushed successfully
+- Supabase migrations up to `0007_free_plan_trial_downgrade.sql` pushed successfully
 
 ## Security Notes
 
