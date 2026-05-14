@@ -75,15 +75,23 @@ export async function downgradeTrialTenantToFree(input: {
   if (tenantError) throw tenantError;
   if (!tenant) return { ok: false as const, code: "NOT_FOUND" as const };
   if (tenant.plan !== "trial") {
-    return { ok: false as const, code: "NOT_TRIAL" as const, tenant: tenant as Tenant };
+    return {
+      ok: false as const,
+      code: "NOT_TRIAL" as const,
+      tenant: tenant as Tenant,
+    };
   }
   if (tenant.trial_ends_at && new Date(tenant.trial_ends_at) > now) {
-    return { ok: false as const, code: "TRIAL_ACTIVE" as const, tenant: tenant as Tenant };
+    return {
+      ok: false as const,
+      code: "TRIAL_ACTIVE" as const,
+      tenant: tenant as Tenant,
+    };
   }
 
   const { data: updated, error: updateError } = await supabase
     .from("tenants")
-    .update({ plan: "free", status: "active" })
+    .update({ plan: "free", status: "expired" })
     .eq("id", input.tenantId)
     .eq("plan", "trial")
     .select("*")
@@ -110,11 +118,13 @@ export async function downgradeTrialTenantToFree(input: {
   return { ok: true as const, tenant: updatedTenant, synced };
 }
 
-export async function downgradeExpiredTrialTenantsToFree(input: {
-  actorUserId?: string | null;
-  source?: string;
-  now?: Date;
-} = {}) {
+export async function downgradeExpiredTrialTenantsToFree(
+  input: {
+    actorUserId?: string | null;
+    source?: string;
+    now?: Date;
+  } = {},
+) {
   const supabase = createSupabaseServiceClient();
   const now = input.now ?? new Date();
   const { data: tenants, error } = await supabase
@@ -168,11 +178,11 @@ export async function enforceTenantAvailability(tenant: Tenant) {
     return { ok: true as const };
   }
 
-  if (tenant.status === "expired") {
+  if (tenant.status === "expired" || tenant.plan === "free") {
     return {
       ok: false as const,
       code: "TRIAL_EXPIRED" as const,
-      message: "Tenant plan has expired.",
+      message: "Free plan is not available for chat.",
     };
   }
 

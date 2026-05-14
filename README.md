@@ -257,7 +257,7 @@ POST /api/jobs/expire-trials
 Authorization: Bearer <CRON_SECRET>
 ```
 
-Run this from your hosting scheduler or any trusted cron service at least once per day. The job finds active tenants where `plan = "trial"` and `trial_ends_at <= now()`, changes them to `plan = "free"`, keeps `status = "active"`, inserts an audit log, and pushes the updated plan to the configured Mindbloom provisioning endpoint.
+Run this from your hosting scheduler or any trusted cron service at least once per day. The job finds active tenants where `plan = "trial"` and `trial_ends_at <= now()`, changes them to `plan = "free"` and `status = "expired"`, inserts an audit log, and pushes the updated plan to the configured Mindbloom provisioning endpoint.
 
 Important tables:
 
@@ -644,7 +644,7 @@ Trial defaults:
 - 10 files
 - 50 MB storage
 
-When an active trial tenant reaches `trial_ends_at`, the scheduled `/api/jobs/expire-trials` job changes the tenant plan to `free`, keeps the tenant `active`, writes an audit log, and sends the updated `plan` to the Mindbloom company mirror when provisioning env vars are configured. The chat availability check also performs the same downgrade for that tenant if a scheduler is late.
+When an active trial tenant reaches `trial_ends_at`, the scheduled `/api/jobs/expire-trials` job changes the tenant plan to `free`, sets `status = "expired"` to block chat, writes an audit log, and sends the updated `plan` to the Mindbloom company mirror when provisioning env vars are configured. The chat availability check also performs the same downgrade for that tenant if a scheduler is late.
 
 Free defaults:
 
