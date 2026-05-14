@@ -341,27 +341,9 @@ See also committed `.env.example` for variable names.
 
 ### Create Tenant
 
-**Option A — Platform Admin UI**
+**Primary — Partner API (your core SaaS assigns the code)**
 
-Open:
-
-```text
-/platform/tenants
-```
-
-Tenant creation:
-
-- Generates tenant slug/workspace id
-- Creates tenant profile
-- Creates tenant admin user (Supabase Auth) and membership
-- **Auto-generates** a tenant company code
-- Seeds default tenant AI settings and escalation settings
-
-Employees use that generated company code when registering from LINE (`/api/v1/register`, chat flows).
-
-**Option B — Partner API (your core SaaS assigns the code)**
-
-For deployments where another system owns onboarding and assigns `company_code`, call:
+For normal operations, another system owns onboarding and sends a unique `company_code`:
 
 ```http
 POST /api/v1/partner/tenants
@@ -369,13 +351,17 @@ x-tenant-provision-secret: <TENANT_PROVISION_SECRET same as env>
 Content-Type: application/json
 ```
 
-Example body fields: `company_code` (required, alphanumeric, normalized to uppercase—must be unique), `name`, `plan`, `admin_email`, `admin_display_name`, optional profile fields (`industry`, `company_description`, etc.). Same server-side onboarding as UI (tenant defaults for LLM path, tenant admin credentials, `temporaryPassword` in response).
+Example body fields: `company_code` (required, alphanumeric, normalized to uppercase—must be unique), `name`, `plan`, `admin_email`, `admin_display_name`, optional profile fields (`industry`, `company_description`, etc.). Seeds tenant profile, tenant admin user (Supabase Auth), defaults for AI settings and escalation, plus `temporaryPassword` in response.
 
 - Set `TENANT_PROVISION_SECRET` in the server env; if unset this route returns **`503`**.
 - Use **`x-tenant-provision-secret`** header (timing-safe comparison). Separate from **`x-central-bot-secret`** used by LINE.
 - Duplicate `company_code` → **`409`** with `COMPANY_CODE_TAKEN`.
 
 See `docs/openapi.yaml` tag **Partner API** for schemas.
+
+**Optional — Platform Admin API (auto-generated company code)**
+
+`POST /api/admin/tenants` with an authenticated **platform_admin** session still runs the same `createTenantOnboarding` helper and auto-generates a company code—useful for scripted or emergency setup. **`/platform/tenants`** in the dashboard only lists tenants and supports delete (no tenant create form).
 
 ### Tenant AI Settings
 

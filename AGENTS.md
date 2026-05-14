@@ -47,7 +47,7 @@ The bot is central, but all tenant data is separated by `tenant_id`.
 
 Platform Admin can:
 
-- Create/delete tenants
+- Provision new tenants via **Partner API** (`POST /api/v1/partner/tenants`); optionally `POST /api/admin/tenants` when authenticated as platform_admin (same onboarding, auto-generated company code); delete tenants from the dashboard
 - Manage all tenant profiles, usage, conversations, employee links
 - Manage each tenant AI settings
 - Upload/delete each tenant RAG documents
@@ -74,8 +74,8 @@ Company Admin cannot:
 
 Tenant creation records a `company_code` for LINE registration:
 
-- **Platform Admin UI** (`/platform/tenants`) auto-generates a code.
-- **Partner API** `POST /api/v1/partner/tenants` (header `x-tenant-provision-secret`, env `TENANT_PROVISION_SECRET`) accepts your `company_code`; use when your core SaaS owns provisioning.
+- **Partner API** `POST /api/v1/partner/tenants` (header `x-tenant-provision-secret`, env `TENANT_PROVISION_SECRET`) is the primary path; you supply a unique alphanumeric `company_code`.
+- **Platform Admin API** `POST /api/admin/tenants` (session auth) still auto-generates a company code for rare internal use. The `/platform/tenants` page lists and deletes tenants only (no create form).
 
 LINE users register by sending that company code.
 

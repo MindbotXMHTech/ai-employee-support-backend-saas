@@ -8,7 +8,7 @@ import { createTenantOnboarding } from "@/lib/services/tenantService";
 /**
  * Partner / core-system provisioning: creates tenant + tenant admin + YOUR company_code.
  * Requires TENANT_PROVISION_SECRET and header x-tenant-provision-secret (timing-safe).
- * Platform Admin UI flow remains at POST /api/admin/tenants without company_code (auto-generated code).
+ * Alternative: authenticated POST /api/admin/tenants (platform_admin) auto-generates company_code; `/platform/tenants` has no create form.
  */
 export async function POST(request: NextRequest) {
   if (!env.TENANT_PROVISION_SECRET?.trim()) {
