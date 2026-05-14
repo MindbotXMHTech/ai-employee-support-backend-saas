@@ -20,7 +20,7 @@ export default async function TenantDashboardPage() {
     );
   }
 
-  const trialDays = data.tenant.trial_ends_at
+  const trialDays = data.tenant.plan === "trial" && data.tenant.trial_ends_at
     ? Math.max(Math.ceil((new Date(data.tenant.trial_ends_at).getTime() - new Date().getTime()) / 86_400_000), 0)
     : null;
 

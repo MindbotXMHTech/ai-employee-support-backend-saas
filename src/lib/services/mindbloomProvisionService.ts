@@ -7,7 +7,7 @@ export type MindbloomProvisionPayload = {
   company_code: string;
   tenant_id: string;
   tenant_name: string;
-  plan: "trial" | "pro";
+  plan: "free" | "trial" | "pro";
   /** Optional; when omitted or empty, Mindbloom leaves departments unchanged. */
   departments?: string[];
 };
@@ -22,7 +22,9 @@ function sleep(ms: number) {
  * Pushes tenant + company code to Mindbloom `saas-company-provision` (server-to-server).
  * Best-effort: swallows errors after retries; never throws.
  */
-export async function pushMindbloomCompanyProvision(input: MindbloomProvisionPayload): Promise<void> {
+export async function pushMindbloomCompanyProvision(
+  input: MindbloomProvisionPayload,
+): Promise<void> {
   const url = env.MINDBLOOM_PROVISION_URL?.trim();
   const secret = env.MINDBLOOM_PROVISION_SECRET?.trim();
   if (!url || !secret) {
@@ -50,7 +52,10 @@ export async function pushMindbloomCompanyProvision(input: MindbloomProvisionPay
       });
       const text = await res.text();
       if (res.ok) {
-        console.info("mindbloom_provision_ok", { tenant_id: input.tenant_id, attempt });
+        console.info("mindbloom_provision_ok", {
+          tenant_id: input.tenant_id,
+          attempt,
+        });
         return;
       }
       const retryable = res.status >= 500 || res.status === 429;
@@ -67,11 +72,18 @@ export async function pushMindbloomCompanyProvision(input: MindbloomProvisionPay
       lastError = new Error(`HTTP ${res.status}`);
     } catch (error) {
       lastError = error;
-      console.error("mindbloom_provision_fetch_error", { tenant_id: input.tenant_id, attempt, error });
+      console.error("mindbloom_provision_fetch_error", {
+        tenant_id: input.tenant_id,
+        attempt,
+        error,
+      });
     }
     if (attempt < MAX_ATTEMPTS) {
       await sleep(BASE_DELAY_MS * 2 ** (attempt - 1));
     }
   }
-  console.error("mindbloom_provision_exhausted", { tenant_id: input.tenant_id, error: lastError });
+  console.error("mindbloom_provision_exhausted", {
+    tenant_id: input.tenant_id,
+    error: lastError,
+  });
 }
