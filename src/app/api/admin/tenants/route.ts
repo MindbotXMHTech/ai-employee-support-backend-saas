@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminUser } from "@/lib/auth/admin";
-import { createTenantOnboarding } from "@/lib/services/tenantService";
+import { AdminEmailTakenError, createTenantOnboarding } from "@/lib/services/tenantService";
 import { isPostgrestJwtDecodeError, SUPABASE_KEY_MISMATCH_USER_MESSAGE } from "@/lib/supabase/postgrestErrors";
 import { tenantFormSchema } from "@/lib/validation/admin";
 
@@ -18,6 +18,12 @@ export async function POST(request: NextRequest) {
     const result = await createTenantOnboarding({ ...parsed.data, created_by: admin.appUser.id });
     return NextResponse.json(result);
   } catch (error) {
+    if (error instanceof AdminEmailTakenError) {
+      return NextResponse.json(
+        { error: { code: error.code, message: error.message } },
+        { status: 409 },
+      );
+    }
     if (isPostgrestJwtDecodeError(error)) {
       return NextResponse.json({ error: SUPABASE_KEY_MISMATCH_USER_MESSAGE, code: "PGRST301" }, { status: 503 });
     }

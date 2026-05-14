@@ -107,6 +107,33 @@ describe("POST /api/v1/partner/tenants", () => {
     expect(res.status).toBe(409);
   });
 
+  it("returns 409 when admin email is already registered", async () => {
+    vi.doMock("@/lib/services/tenantService", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@/lib/services/tenantService")>();
+      return { ...actual, createTenantOnboarding };
+    });
+    const { AdminEmailTakenError } = await import("@/lib/services/tenantService");
+    createTenantOnboarding.mockRejectedValue(new AdminEmailTakenError());
+
+    const { POST } = await import("./route");
+    const res = await POST(
+      jsonRequest(
+        "http://localhost/api/v1/partner/tenants",
+        {
+          company_code: "NEW01",
+          name: "Co",
+          plan: "trial",
+          admin_email: "taken@ex.com",
+          admin_display_name: "Admin",
+        },
+        { [headerName]: secret },
+      ),
+    );
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error.code).toBe("ADMIN_EMAIL_TAKEN");
+  });
+
   it("returns 200 with onboarding payload when provision succeeds", async () => {
     vi.doMock("@/lib/services/tenantService", () => ({ createTenantOnboarding }));
     createTenantOnboarding.mockResolvedValue({

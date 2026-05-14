@@ -3,7 +3,7 @@ import { TENANT_PROVISION_SECRET_HEADER, validateTenantProvisionSecret } from "@
 import { partnerProvisionTenantSchema } from "@/lib/validation/partnerProvision";
 import { env } from "@/lib/env";
 import { CompanyCodeTakenError } from "@/lib/services/companyCodeService";
-import { createTenantOnboarding } from "@/lib/services/tenantService";
+import { AdminEmailTakenError, createTenantOnboarding } from "@/lib/services/tenantService";
 
 /**
  * Partner / core-system provisioning: creates tenant + tenant admin + YOUR company_code.
@@ -66,6 +66,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     if (error instanceof CompanyCodeTakenError) {
+      return NextResponse.json({ error: { code: error.code, message: error.message } }, { status: 409 });
+    }
+    if (error instanceof AdminEmailTakenError) {
       return NextResponse.json({ error: { code: error.code, message: error.message } }, { status: 409 });
     }
     console.error("partner_provision_tenant_error", error);

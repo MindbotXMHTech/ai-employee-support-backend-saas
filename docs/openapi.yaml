@@ -328,7 +328,7 @@ paths:
                       code: { type: string, example: UNAUTHORIZED }
                       message: { type: string }
         "409":
-          description: Company code already registered.
+          description: Conflict — company code already in use, or admin_email already registered as a dashboard user (Auth / `public.users`).
           content:
             application/json:
               schema:
@@ -337,7 +337,8 @@ paths:
                   error:
                     type: object
                     properties:
-                      code: { type: string, example: COMPANY_CODE_TAKEN }
+                      code:
+                        { type: string, example: COMPANY_CODE_TAKEN, enum: [COMPANY_CODE_TAKEN, ADMIN_EMAIL_TAKEN] }
                       message: { type: string }
         "500":
           description: Provisioning failed.

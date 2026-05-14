@@ -1,3 +1,4 @@
+import { isAuthError } from "@supabase/supabase-js";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { env } from "@/lib/env";
 import type { Tenant } from "@/lib/types";
@@ -10,6 +11,30 @@ import {
 } from "@/lib/services/companyCodeService";
 import { pushMindbloomCompanyProvision } from "@/lib/services/mindbloomProvisionService";
 import { getPlatformAiSettings } from "@/lib/services/platformAiSettingsService";
+
+/** Admin email already used by another dashboard user (Auth or `public.users`). */
+export class AdminEmailTakenError extends Error {
+  readonly code = "ADMIN_EMAIL_TAKEN";
+
+  constructor(message = "This admin email is already registered.") {
+    super(message);
+    this.name = "AdminEmailTakenError";
+  }
+}
+
+function isAuthDuplicateEmailError(error: unknown) {
+  if (!isAuthError(error)) return false;
+  const c = String(error.code ?? "").toLowerCase();
+  if (c === "email_exists" || c === "user_already_exists") return true;
+  const m = (error.message ?? "").toLowerCase();
+  return (
+    m.includes("already registered") ||
+    m.includes("already been registered") ||
+    m.includes("user already exists") ||
+    m.includes("email address has already been taken") ||
+    (m.includes("duplicate") && m.includes("email"))
+  );
+}
 
 export function planDefaults(plan: "free" | "trial" | "pro") {
   if (plan === "pro") {
@@ -287,107 +312,144 @@ export async function createTenantOnboarding(input: {
   company_code?: string;
 }) {
   const supabase = createSupabaseServiceClient();
+  const adminEmail = input.admin_email.trim().toLowerCase();
 
   if (input.company_code) {
     const taken = await isCompanyCodeTaken(input.company_code);
     if (taken) throw new CompanyCodeTakenError();
   }
 
+  const { data: existingUser } = await supabase
+    .from("users")
+    .select("id")
+    .ilike("email", adminEmail)
+    .maybeSingle();
+  if (existingUser) {
+    throw new AdminEmailTakenError();
+  }
+
   const slug = await generateUniqueTenantSlug(input.name);
-  const tenant = await createTenant({
-    name: input.name,
-    slug,
-    plan: input.plan,
-  });
   const temporaryPassword = crypto.randomBytes(12).toString("base64url");
 
-  const { data: authUser, error: authError } =
-    await supabase.auth.admin.createUser({
-      email: input.admin_email,
-      password: temporaryPassword,
-      email_confirm: true,
-      user_metadata: {
-        display_name: input.admin_display_name,
-      },
-    });
-  if (authError) throw authError;
-
-  const { data: appUser, error: userError } = await supabase
-    .from("users")
-    .insert({
-      auth_user_id: authUser.user.id,
-      email: input.admin_email,
+  const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+    email: adminEmail,
+    password: temporaryPassword,
+    email_confirm: true,
+    user_metadata: {
       display_name: input.admin_display_name,
-      role: "tenant_admin",
-    })
-    .select("id, email, display_name")
-    .single();
-  if (userError) throw userError;
-
-  const [{ error: memberError }, { error: profileError }] = await Promise.all([
-    supabase.from("tenant_members").insert({
-      tenant_id: tenant.id,
-      user_id: appUser.id,
-      role: "tenant_admin",
-      status: "active",
-    }),
-    supabase
-      .from("tenant_profiles")
-      .update({
-        company_name: input.name,
-        industry: input.industry || null,
-        company_description: input.company_description || null,
-        hr_contact_name: input.hr_contact_name || null,
-        hr_contact_email: input.hr_contact_email || null,
-      })
-      .eq("tenant_id", tenant.id),
-  ]);
-  if (memberError) throw memberError;
-  if (profileError) throw profileError;
-
-  const companyCode = input.company_code
-    ? await insertCompanyCodeForTenant({
-        tenantId: tenant.id,
-        code: input.company_code,
-        createdBy: input.created_by,
-      })
-    : await ensureCompanyCodeForTenant({
-        tenantId: tenant.id,
-        tenantName: tenant.name,
-        createdBy: input.created_by,
-      });
-
-  await supabase.from("audit_logs").insert({
-    tenant_id: tenant.id,
-    action: "tenant.onboarded",
-    target_type: "tenant",
-    target_id: tenant.id,
-    metadata: {
-      admin_email: input.admin_email,
-      slug,
-      plan: input.plan,
-      ...(input.company_code ? { partner_company_code: input.company_code } : {}),
     },
   });
 
-  void pushMindbloomCompanyProvision({
-    company_code: companyCode.code,
-    tenant_id: tenant.id,
-    tenant_name: tenant.name,
-    plan: tenant.plan,
-  }).catch((error) => {
-    console.error("mindbloom_provision_unhandled", {
-      tenant_id: tenant.id,
-      error,
-    });
-  });
+  if (authError) {
+    if (isAuthDuplicateEmailError(authError)) {
+      throw new AdminEmailTakenError();
+    }
+    throw authError;
+  }
 
-  return {
-    tenant,
-    adminUser: appUser,
-    companyCode,
-    temporaryPassword,
+  const authUserId = authUser.user.id;
+  let tenantId: string | undefined;
+  let appUserId: string | undefined;
+
+  const rollbackPartial = async () => {
+    if (tenantId) {
+      await supabase.from("tenants").delete().eq("id", tenantId);
+    }
+    if (appUserId) {
+      await supabase.from("users").delete().eq("id", appUserId);
+    }
+    await supabase.auth.admin.deleteUser(authUserId).catch(() => undefined);
   };
+
+  try {
+    const tenant = await createTenant({
+      name: input.name,
+      slug,
+      plan: input.plan,
+    });
+    tenantId = tenant.id;
+
+    const { data: appUser, error: userError } = await supabase
+      .from("users")
+      .insert({
+        auth_user_id: authUserId,
+        email: adminEmail,
+        display_name: input.admin_display_name,
+        role: "tenant_admin",
+      })
+      .select("id, email, display_name")
+      .single();
+    if (userError) throw userError;
+    appUserId = appUser.id;
+
+    const [{ error: memberError }, { error: profileError }] = await Promise.all([
+      supabase.from("tenant_members").insert({
+        tenant_id: tenant.id,
+        user_id: appUser.id,
+        role: "tenant_admin",
+        status: "active",
+      }),
+      supabase
+        .from("tenant_profiles")
+        .update({
+          company_name: input.name,
+          industry: input.industry || null,
+          company_description: input.company_description || null,
+          hr_contact_name: input.hr_contact_name || null,
+          hr_contact_email: input.hr_contact_email || null,
+        })
+        .eq("tenant_id", tenant.id),
+    ]);
+    if (memberError) throw memberError;
+    if (profileError) throw profileError;
+
+    const companyCode = input.company_code
+      ? await insertCompanyCodeForTenant({
+          tenantId: tenant.id,
+          code: input.company_code,
+          createdBy: input.created_by,
+        })
+      : await ensureCompanyCodeForTenant({
+          tenantId: tenant.id,
+          tenantName: tenant.name,
+          createdBy: input.created_by,
+        });
+
+    await supabase.from("audit_logs").insert({
+      tenant_id: tenant.id,
+      action: "tenant.onboarded",
+      target_type: "tenant",
+      target_id: tenant.id,
+      metadata: {
+        admin_email: adminEmail,
+        slug,
+        plan: input.plan,
+        ...(input.company_code ? { partner_company_code: input.company_code } : {}),
+      },
+    });
+
+    void pushMindbloomCompanyProvision({
+      company_code: companyCode.code,
+      tenant_id: tenant.id,
+      tenant_name: tenant.name,
+      plan: tenant.plan,
+    }).catch((error) => {
+      console.error("mindbloom_provision_unhandled", {
+        tenant_id: tenant.id,
+        error,
+      });
+    });
+
+    return {
+      tenant,
+      adminUser: appUser,
+      companyCode,
+      temporaryPassword,
+    };
+  } catch (error) {
+    await rollbackPartial();
+    throw error;
+  }
 }
 
 export async function deleteTenantById(input: {
