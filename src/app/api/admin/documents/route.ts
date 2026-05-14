@@ -1,22 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { canManageTenantScopedResource } from "@/lib/auth/tenantScopedAccess";
 import { requireAdminUser } from "@/lib/auth/admin";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { createDocumentRecord, processDocument, uploadDocumentFile, validateDocumentFile } from "@/lib/services/documentService";
 import { documentUploadSchema } from "@/lib/validation/admin";
 import type { DocumentCategory } from "@/lib/types";
-
-async function canManageTenantDocuments(input: { tenantId: string; appUser: { id: string; role: string } }) {
-  if (input.appUser.role === "platform_admin") return true;
-  const supabase = createSupabaseServiceClient();
-  const { data } = await supabase
-    .from("tenant_members")
-    .select("id")
-    .eq("tenant_id", input.tenantId)
-    .eq("user_id", input.appUser.id)
-    .eq("status", "active")
-    .maybeSingle();
-  return Boolean(data);
-}
 
 export async function POST(request: NextRequest) {
   const admin = await requireAdminUser();
@@ -33,7 +21,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid upload payload." }, { status: 400 });
   }
 
-  const canManage = await canManageTenantDocuments({ tenantId: parsed.data.tenant_id, appUser: admin.appUser });
+  const canManage = await canManageTenantScopedResource({ tenantId: parsed.data.tenant_id, appUser: admin.appUser });
   if (!canManage) return NextResponse.json({ error: "Forbidden." }, { status: 403 });
 
   const supabase = createSupabaseServiceClient();

@@ -72,7 +72,12 @@ Company Admin cannot:
 
 ## Tenant Registration And LINE Integration
 
-Tenant creation generates a `company_code`. LINE users register by sending that company code.
+Tenant creation records a `company_code` for LINE registration:
+
+- **Platform Admin UI** (`/platform/tenants`) auto-generates a code.
+- **Partner API** `POST /api/v1/partner/tenants` (header `x-tenant-provision-secret`, env `TENANT_PROVISION_SECRET`) accepts your `company_code`; use when your core SaaS owns provisioning.
+
+LINE users register by sending that company code.
 
 Main bot-facing endpoints:
 
@@ -81,9 +86,7 @@ Main bot-facing endpoints:
 - `POST /api/v2/chat` - simplified LINE-oriented chat; same orchestration after tenant resolve; supports `workflow_token` in JSON when headers are impossible
 - `GET /api/v1/config` - read tenant bot config after tenant resolution
 - `GET /api/v1/usage` - read tenant quota/usage after tenant resolution
-- `GET /api/v1/health` - uptime check
-
-Central bot requests must send:
+- `POST /api/v1/partner/tenants` - server-to-server tenant provision with caller-supplied `company_code` + `TENANT_PROVISION_SECRET` (`x-tenant-provision-secret`; disabled if env unset)
 
 ```http
 x-central-bot-secret: <CENTRAL_BOT_SECRET>
@@ -162,6 +165,9 @@ RLS is required for public schema tenant tables.
 
 ## Important Files
 
+- `src/app/api/v1/partner/tenants/route.ts` - partner tenant provisioning API
+- `src/lib/api/tenantProvisionAuth.ts` - provisioning secret validation
+- `src/lib/validation/partnerProvision.ts` - partner tenant request schema
 - `src/lib/services/aiService.ts` - chat orchestration
 - `src/lib/services/platformAiSettingsService.ts` - tenant/platform AI settings resolver
 - `src/lib/services/centralBotService.ts` - central bot auth and tenant resolution helpers

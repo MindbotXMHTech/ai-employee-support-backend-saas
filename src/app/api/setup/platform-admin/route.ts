@@ -1,11 +1,14 @@
 import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { env } from "@/lib/env";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { validateOptionalPlatformSetupSecret } from "@/lib/setup/platformSetupAuth";
 import { z } from "zod";
 
 const setupSchema = z.object({
   email: z.string().email(),
   display_name: z.string().min(1),
+  setup_secret: z.string().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -22,6 +25,16 @@ export async function POST(request: NextRequest) {
   const parsed = setupSchema.safeParse(await request.json());
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.message }, { status: 400 });
+  }
+
+  if (
+    !validateOptionalPlatformSetupSecret({
+      headerValue: request.headers.get("x-platform-setup-secret"),
+      bodyValue: parsed.data.setup_secret,
+      configuredSecret: env.PLATFORM_SETUP_SECRET,
+    })
+  ) {
+    return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
   const temporaryPassword = crypto.randomBytes(12).toString("base64url");

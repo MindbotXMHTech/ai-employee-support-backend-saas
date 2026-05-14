@@ -15,6 +15,10 @@ const envSchema = z.object({
   CRON_SECRET: z.string().optional(),
   MINDBLOOM_PROVISION_URL: z.string().optional(),
   MINDBLOOM_PROVISION_SECRET: z.string().optional(),
+  /** When set, platform bootstrap requires matching `x-platform-setup-secret` header or `setup_secret` in JSON body. */
+  PLATFORM_SETUP_SECRET: z.string().optional(),
+  /** Server-to-server: POST /api/v1/partner/tenants (header x-tenant-provision-secret). Separate from LINE central bot secret. */
+  TENANT_PROVISION_SECRET: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);

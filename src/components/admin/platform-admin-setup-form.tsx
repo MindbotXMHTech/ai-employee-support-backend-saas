@@ -27,13 +27,18 @@ export function PlatformAdminSetupForm() {
     setResult(null);
 
     const form = new FormData(formElement);
+    const payload: Record<string, string> = {
+      email: String(form.get("email")),
+      display_name: String(form.get("display_name")),
+    };
+    const setupSecretRaw = String(form.get("setup_secret") ?? "").trim();
+    if (setupSecretRaw) {
+      payload.setup_secret = setupSecretRaw;
+    }
     const response = await fetch("/api/setup/platform-admin", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        email: String(form.get("email")),
-        display_name: String(form.get("display_name")),
-      }),
+      body: JSON.stringify(payload),
     });
 
     setLoading(false);
@@ -56,6 +61,21 @@ export function PlatformAdminSetupForm() {
       <div className="space-y-2">
         <Label htmlFor="email">Platform Admin Email</Label>
         <Input id="email" name="email" type="email" placeholder="owner@example.com" required />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="setup_secret">Bootstrap token (optional)</Label>
+        <Input
+          id="setup_secret"
+          name="setup_secret"
+          type="password"
+          autoComplete="off"
+          placeholder="Required when PLATFORM_SETUP_SECRET is set on the server"
+        />
+        <p className="text-xs text-slate-600">
+          If your deployment sets <code className="font-mono">PLATFORM_SETUP_SECRET</code>, paste the same value here
+          (or send header <code className="font-mono">x-platform-setup-secret</code>). Leave empty for local dev when
+          the env var is not set.
+        </p>
       </div>
       {error ? <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
       {result ? (

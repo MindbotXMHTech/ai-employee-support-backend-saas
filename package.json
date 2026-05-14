@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "secrets:platform-setup": "node scripts/gen-platform-setup-secret.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

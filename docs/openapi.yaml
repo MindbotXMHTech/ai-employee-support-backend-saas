@@ -5,12 +5,10 @@ info:
   description: |
     API documentation for the multi-tenant employee support bot backend.
 
-    The intended production integration is a central LINE bot or legacy bot
-    backend calling the bot-facing `/api/v1/*` endpoints with
-    `x-central-bot-secret`.
-
-    Tenant-specific admin operations are protected by Supabase Auth session
-    cookies and role checks.
+    Intended production integrations:
+    bot-facing `/api/v1/*` with `x-central-bot-secret`,
+    optional partner `POST /api/v1/partner/tenants` with `x-tenant-provision-secret`,
+    tenant-specific admin sessions for Platform / Company dashboards.
 servers:
   - url: http://localhost:4000
     description: Local development
@@ -31,6 +29,8 @@ tags:
     description: RAG playground testing.
   - name: Admin - API Keys
     description: Legacy tenant API key management.
+  - name: Partner API
+    description: Server-to-server tenant provisioning (core system owns company codes).
 
 security:
   - CentralBotSecret: []
@@ -277,6 +277,93 @@ paths:
         "404":
           $ref: "#/components/responses/TenantNotResolved"
 
+  /api/v1/partner/tenants:
+    post:
+      tags: [Partner API]
+      summary: Provision tenant with caller-supplied company code
+      description: |
+        Creates tenant, tenant admin (Supabase Auth), default `bot_settings` / escalation row,
+        and **your** `company_code` (must be unique). Requires `TENANT_PROVISION_SECRET` on the server
+        and matching `x-tenant-provision-secret`. Returns the same onboarding fields as platform-admin
+        tenant creation plus `provisioned_company_code`.
+
+        If the env var is unset, the endpoint responds with 503.
+      security:
+        - TenantProvisionSecret: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PartnerProvisionTenantRequest"
+      responses:
+        "200":
+          description: Tenant onboarded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerProvisionTenantResponse"
+        "400":
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code: { type: string, example: VALIDATION_ERROR }
+                      message: { type: string }
+        "401":
+          description: Invalid or missing provisioning secret.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code: { type: string, example: UNAUTHORIZED }
+                      message: { type: string }
+        "409":
+          description: Company code already registered.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code: { type: string, example: COMPANY_CODE_TAKEN }
+                      message: { type: string }
+        "500":
+          description: Provisioning failed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code: { type: string, example: INTERNAL_ERROR }
+                      message: { type: string }
+        "503":
+          description: Partner provisioning not configured (missing TENANT_PROVISION_SECRET).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code: { type: string, example: PROVISIONING_DISABLED }
+                      message: { type: string }
+
   /api/setup/platform-admin:
     post:
       tags: [Admin - Setup]
@@ -295,6 +382,18 @@ paths:
                   format: email
                 display_name:
                   type: string
+                setup_secret:
+                  type: string
+                  description: >
+                    Required only when the server has PLATFORM_SETUP_SECRET set; must match exactly.
+                    Alternatively send the same value in the x-platform-setup-secret header.
+      parameters:
+        - in: header
+          name: x-platform-setup-secret
+          required: false
+          schema:
+            type: string
+          description: Optional alternative to setup_secret in body when PLATFORM_SETUP_SECRET is configured.
       responses:
         "200":
           description: Platform admin created.
@@ -322,6 +421,16 @@ paths:
                     description: Generated password returned once.
         "400":
           $ref: "#/components/responses/ValidationError"
+        "403":
+          description: Missing or incorrect bootstrap secret when PLATFORM_SETUP_SECRET is enforced.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Forbidden.
         "409":
           description: Platform admin already exists.
           content:
@@ -641,6 +750,13 @@ components:
       in: cookie
       name: sb-access-token
       description: Supabase Auth browser session cookies. Actual cookie names depend on Supabase SSR configuration.
+    TenantProvisionSecret:
+      type: apiKey
+      in: header
+      name: x-tenant-provision-secret
+      description: |
+        Server-to-server secret for `POST /api/v1/partner/tenants`. Must match `TENANT_PROVISION_SECRET`
+        in the deployment environment. Separate from `x-central-bot-secret`.
 
   parameters:
     ExternalUserId:
@@ -1050,6 +1166,47 @@ components:
         updated_at:
           type: string
           nullable: true
+
+    PartnerProvisionTenantRequest:
+      type: object
+      required: [company_code, name, plan, admin_email, admin_display_name]
+      properties:
+        company_code:
+          type: string
+          description: Caller-owned code; stored uppercase. Must be unique across active codes.
+          minLength: 4
+          maxLength: 64
+          pattern: "^[A-Za-z0-9]+$"
+        name:
+          type: string
+          description: Tenant display name / company name seed.
+        plan:
+          type: string
+          enum: [trial, pro]
+        industry:
+          type: string
+        company_description:
+          type: string
+        hr_contact_name:
+          type: string
+        hr_contact_email:
+          type: string
+          format: email
+        admin_email:
+          type: string
+          format: email
+        admin_display_name:
+          type: string
+
+    PartnerProvisionTenantResponse:
+      allOf:
+        - $ref: "#/components/schemas/CreateTenantResponse"
+        - type: object
+          required: [provisioned_company_code]
+          properties:
+            provisioned_company_code:
+              type: string
+              description: Echo of persisted company_code (normalized).
 
     CreateTenantRequest:
       type: object

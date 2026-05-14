@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { executeV1Chat } from "@/application/chat/v1-chat.use-case";
 import { authenticateBotRequest, authenticateCentralBotRequest } from "@/lib/api/auth";
-import { handleChatRequest } from "@/lib/services/aiService";
-import { centralBotNeedsCompanyCodeResponse, resolveTenantForCentralBot } from "@/lib/services/centralBotService";
+import { resolveTenantForCentralBot } from "@/lib/services/centralBotService";
 import { chatRequestSchema } from "@/lib/validation/chat";
 
 export async function POST(request: NextRequest) {
@@ -29,7 +29,8 @@ export async function POST(request: NextRequest) {
       });
 
       if (!resolved?.tenant) {
-        return NextResponse.json(centralBotNeedsCompanyCodeResponse());
+        const result = await executeV1Chat({ kind: "central_needs_company_code" });
+        return NextResponse.json(result.body, { status: result.statusCode });
       }
       tenant = resolved.tenant;
     } else {
@@ -38,8 +39,12 @@ export async function POST(request: NextRequest) {
       tenant = auth.tenant;
     }
 
-    const response = await handleChatRequest({ ...parsed.data, tenant });
-    return NextResponse.json(response, { status: response.success ? 200 : 400 });
+    const result = await executeV1Chat({
+      kind: "chat",
+      parsed: parsed.data,
+      tenant,
+    });
+    return NextResponse.json(result.body, { status: result.statusCode });
   } catch (error) {
     console.error("chat_api_error", error);
     return NextResponse.json(

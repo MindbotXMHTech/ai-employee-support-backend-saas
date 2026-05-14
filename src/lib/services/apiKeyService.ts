@@ -18,6 +18,13 @@ export function getApiKeyPrefix(rawKey: string) {
   return parts.length >= 3 ? `${parts[0]}_${parts[1]}_${rawKey.slice(-6)}` : rawKey.slice(0, 12);
 }
 
+export async function getApiKeyTenantId(apiKeyId: string): Promise<string | null> {
+  const supabase = createSupabaseServiceClient();
+  const { data, error } = await supabase.from("api_keys").select("tenant_id").eq("id", apiKeyId).maybeSingle();
+  if (error) throw error;
+  return (data?.tenant_id as string | undefined) ?? null;
+}
+
 export async function createApiKey(input: { tenantId: string; name: string; createdBy?: string | null }) {
   const supabase = createSupabaseServiceClient();
   const rawKey = generateRawApiKey();

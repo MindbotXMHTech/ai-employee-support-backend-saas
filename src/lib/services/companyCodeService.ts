@@ -1,6 +1,15 @@
 import crypto from "node:crypto";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
+export class CompanyCodeTakenError extends Error {
+  readonly code = "COMPANY_CODE_TAKEN";
+
+  constructor() {
+    super("Company code is already in use.");
+    this.name = "CompanyCodeTakenError";
+  }
+}
+
 export function generateCompanyCode(name: string) {
   const prefix = name
     .toUpperCase()
@@ -55,4 +64,42 @@ export async function ensureCompanyCodeForTenant(input: {
 
   if (existing) return existing;
   return createCompanyCodeForTenant(input);
+}
+
+export async function isCompanyCodeTaken(normalizedCode: string): Promise<boolean> {
+  const supabase = createSupabaseServiceClient();
+  const { data } = await supabase.from("tenant_company_codes").select("id").eq("code", normalizedCode).maybeSingle();
+  return Boolean(data);
+}
+
+/** Caller supplies code (partner provisioning). Unique constraint races map to CompanyCodeTakenError. */
+export async function insertCompanyCodeForTenant(input: {
+  tenantId: string;
+  code: string;
+  createdBy?: string | null;
+}) {
+  const supabase = createSupabaseServiceClient();
+  const { data, error } = await supabase
+    .from("tenant_company_codes")
+    .insert({
+      tenant_id: input.tenantId,
+      code: input.code,
+      created_by: input.createdBy ?? null,
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    const pgCode =
+      typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
+        ? error.code
+        : "";
+    const msg =
+      typeof error === "object" && error !== null && "message" in error ? String((error as { message?: string }).message) : "";
+    if (pgCode === "23505" || msg.toLowerCase().includes("duplicate"))
+      throw new CompanyCodeTakenError();
+    throw error;
+  }
+
+  return data;
 }

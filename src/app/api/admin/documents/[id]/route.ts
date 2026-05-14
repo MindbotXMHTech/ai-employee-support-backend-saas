@@ -1,19 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { canManageTenantScopedResource } from "@/lib/auth/tenantScopedAccess";
 import { requireAdminUser } from "@/lib/auth/admin";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-
-async function canManageTenantDocuments(input: { tenantId: string; appUser: { id: string; role: string } }) {
-  if (input.appUser.role === "platform_admin") return true;
-  const supabase = createSupabaseServiceClient();
-  const { data } = await supabase
-    .from("tenant_members")
-    .select("id")
-    .eq("tenant_id", input.tenantId)
-    .eq("user_id", input.appUser.id)
-    .eq("status", "active")
-    .maybeSingle();
-  return Boolean(data);
-}
 
 export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdminUser();
@@ -28,7 +16,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
     .single();
   if (error || !document) return NextResponse.json({ error: "Document not found." }, { status: 404 });
 
-  const canManage = await canManageTenantDocuments({ tenantId: document.tenant_id, appUser: admin.appUser });
+  const canManage = await canManageTenantScopedResource({ tenantId: document.tenant_id, appUser: admin.appUser });
   if (!canManage) return NextResponse.json({ error: "Forbidden." }, { status: 403 });
 
   if (document.storage_path) {

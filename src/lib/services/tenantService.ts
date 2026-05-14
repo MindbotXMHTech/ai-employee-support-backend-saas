@@ -2,7 +2,12 @@ import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { env } from "@/lib/env";
 import type { Tenant } from "@/lib/types";
 import crypto from "node:crypto";
-import { ensureCompanyCodeForTenant } from "@/lib/services/companyCodeService";
+import {
+  ensureCompanyCodeForTenant,
+  insertCompanyCodeForTenant,
+  isCompanyCodeTaken,
+  CompanyCodeTakenError,
+} from "@/lib/services/companyCodeService";
 import { pushMindbloomCompanyProvision } from "@/lib/services/mindbloomProvisionService";
 import { getPlatformAiSettings } from "@/lib/services/platformAiSettingsService";
 
@@ -278,8 +283,16 @@ export async function createTenantOnboarding(input: {
   admin_email: string;
   admin_display_name: string;
   created_by?: string | null;
+  /** When set (e.g. partner API), persists this code instead of auto-generating. Must be globally unique (active codes). */
+  company_code?: string;
 }) {
   const supabase = createSupabaseServiceClient();
+
+  if (input.company_code) {
+    const taken = await isCompanyCodeTaken(input.company_code);
+    if (taken) throw new CompanyCodeTakenError();
+  }
+
   const slug = await generateUniqueTenantSlug(input.name);
   const tenant = await createTenant({
     name: input.name,
@@ -332,11 +345,17 @@ export async function createTenantOnboarding(input: {
   if (memberError) throw memberError;
   if (profileError) throw profileError;
 
-  const companyCode = await ensureCompanyCodeForTenant({
-    tenantId: tenant.id,
-    tenantName: tenant.name,
-    createdBy: input.created_by,
-  });
+  const companyCode = input.company_code
+    ? await insertCompanyCodeForTenant({
+        tenantId: tenant.id,
+        code: input.company_code,
+        createdBy: input.created_by,
+      })
+    : await ensureCompanyCodeForTenant({
+        tenantId: tenant.id,
+        tenantName: tenant.name,
+        createdBy: input.created_by,
+      });
 
   await supabase.from("audit_logs").insert({
     tenant_id: tenant.id,
@@ -347,6 +366,7 @@ export async function createTenantOnboarding(input: {
       admin_email: input.admin_email,
       slug,
       plan: input.plan,
+      ...(input.company_code ? { partner_company_code: input.company_code } : {}),
     },
   });
 

@@ -184,7 +184,7 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 OPENAI_API_KEY=
-APP_URL=http://localhost:4000
+APP_URL=http://localhost:3000
 DEFAULT_TRIAL_DAYS=35
 DEFAULT_TRIAL_MESSAGE_LIMIT=500
 DEFAULT_PRO_MESSAGE_LIMIT=30000
@@ -192,6 +192,8 @@ DEFAULT_MAX_SENTENCES=5
 API_KEY_SECRET=
 CENTRAL_BOT_SECRET=
 CRON_SECRET=
+TENANT_PROVISION_SECRET=
+PLATFORM_SETUP_SECRET=
 ```
 
 Optional — **Mindbloom company mirror** after Platform Admin creates a tenant (`createTenantOnboarding`). When both are set, SaaS `POST`s to Mindbloom Edge `saas-company-provision` with `company_code`, `tenant_id`, `tenant_name`, `plan`, and `departments`, with retries (best-effort; onboarding still succeeds if Mindbloom is down). Use the same bearer value as Mindbloom secret `SAAS_PROVISION_SECRET`.
@@ -213,9 +215,11 @@ AI_MODEL_EMBEDDING=text-embedding-3-small
 Notes:
 
 - `SUPABASE_SERVICE_ROLE_KEY` is server-only. Never expose it to browser code.
-- `CENTRAL_BOT_SECRET` is used by trusted central bot backend calls to `/api/v1/*`.
+- `CENTRAL_BOT_SECRET` is used by trusted central bot backend calls to `/api/v1/*` and `/api/v2/*` when headers are supported.
 - `CRON_SECRET` is used by scheduled jobs such as `/api/jobs/expire-trials`.
 - `MINDBLOOM_PROVISION_URL` / `MINDBLOOM_PROVISION_SECRET` are server-only; used to notify Mindbloom after tenant onboarding. Omit both to disable.
+- `TENANT_PROVISION_SECRET` enables `POST /api/v1/partner/tenants`; send the same value in header **`x-tenant-provision-secret`**. Omit to keep that route disabled (`503`). Do not reuse in browser bundles.
+- `PLATFORM_SETUP_SECRET`, when set, requires `setup_secret` in JSON or `x-platform-setup-secret` for first-time `/api/setup/platform-admin`; generate with **`npm run secrets:platform-setup`**. Omit locally if you rely on trusted networks only.
 - `API_KEY_SECRET` is used only for legacy tenant API key hashing.
 - Model values can also be controlled per tenant by Platform Admin in the UI.
 
@@ -324,7 +328,20 @@ Open:
 
 This creates the initial Platform Admin via Supabase Auth and the `users` table.
 
+Optional **bootstrap lock** (recommended if the app URL is reachable beyond your machine):
+
+```bash
+npm run secrets:platform-setup
+```
+
+Add the printed line to `.env.local` as `PLATFORM_SETUP_SECRET=…`, restart `npm run dev`, then submit the same string in the setup form field **Bootstrap token** (or send header `x-platform-setup-secret`).
+If `PLATFORM_SETUP_SECRET` is unset, behavior matches older local setups (no extra token).
+
+See also committed `.env.example` for variable names.
+
 ### Create Tenant
+
+**Option A — Platform Admin UI**
 
 Open:
 
@@ -332,17 +349,33 @@ Open:
 /platform/tenants
 ```
 
-Tenant creation also:
+Tenant creation:
 
 - Generates tenant slug/workspace id
 - Creates tenant profile
-- Creates tenant admin user
-- Creates tenant membership
-- Generates tenant company code
-- Creates default tenant AI settings
-- Creates escalation settings
+- Creates tenant admin user (Supabase Auth) and membership
+- **Auto-generates** a tenant company code
+- Seeds default tenant AI settings and escalation settings
 
-The generated company code is the code employees use when registering from LINE.
+Employees use that generated company code when registering from LINE (`/api/v1/register`, chat flows).
+
+**Option B — Partner API (your core SaaS assigns the code)**
+
+For deployments where another system owns onboarding and assigns `company_code`, call:
+
+```http
+POST /api/v1/partner/tenants
+x-tenant-provision-secret: <TENANT_PROVISION_SECRET same as env>
+Content-Type: application/json
+```
+
+Example body fields: `company_code` (required, alphanumeric, normalized to uppercase—must be unique), `name`, `plan`, `admin_email`, `admin_display_name`, optional profile fields (`industry`, `company_description`, etc.). Same server-side onboarding as UI (tenant defaults for LLM path, tenant admin credentials, `temporaryPassword` in response).
+
+- Set `TENANT_PROVISION_SECRET` in the server env; if unset this route returns **`503`**.
+- Use **`x-tenant-provision-secret`** header (timing-safe comparison). Separate from **`x-central-bot-secret`** used by LINE.
+- Duplicate `company_code` → **`409`** with `COMPANY_CODE_TAKEN`.
+
+See `docs/openapi.yaml` tag **Partner API** for schemas.
 
 ### Tenant AI Settings
 
@@ -710,7 +743,11 @@ const response = await fetch(`${APP_URL}/api/v1/chat`, {
 
 ## Admin API Summary
 
-Admin routes require Supabase Auth session cookies.
+Partner provisioning (server-to-server, separate secret):
+
+- `POST /api/v1/partner/tenants` — header `x-tenant-provision-secret` (requires `TENANT_PROVISION_SECRET`)
+
+Admin routes require Supabase Auth session cookies:
 
 - `POST /api/setup/platform-admin`
 - `POST /api/admin/tenants`
@@ -779,8 +816,8 @@ Latest verification after recent changes:
 
 ## Security Notes
 
-- Some workflow tools cannot attach bot headers. Send a per-tenant **`workflow_token`** in the JSON body of **`POST /api/v2/chat`** (create in **Workflow HTTP** admin UI or `POST /api/admin/workflow-tokens`). Never put `CENTRAL_BOT_SECRET` in JSON bodies.
-- Never expose `SUPABASE_SERVICE_ROLE_KEY`, `CENTRAL_BOT_SECRET`, or `API_KEY_SECRET` in browser code.
+- Some workflow tools cannot attach bot headers. Send a per-tenant **`workflow_token`** in the JSON body of **`POST /api/v2/chat`** (create in **Workflow HTTP** admin UI or `POST /api/admin/workflow-tokens`). Never put `CENTRAL_BOT_SECRET` or `TENANT_PROVISION_SECRET` in browser or untrusted JSON.
+- Never expose `SUPABASE_SERVICE_ROLE_KEY`, `CENTRAL_BOT_SECRET`, `CRON_SECRET`, `MINDBLOOM_PROVISION_SECRET`, `TENANT_PROVISION_SECRET`, `PLATFORM_SETUP_SECRET`, or `API_KEY_SECRET` in browser code.
 - Only variables prefixed with `NEXT_PUBLIC_` are safe for browser exposure.
 - Bot-facing central endpoints must be called from trusted bot backend code, not directly from LINE client/user devices.
 - Tenant admins must not be able to edit AI system instructions or model settings.
