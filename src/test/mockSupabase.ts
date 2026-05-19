@@ -21,6 +21,31 @@ export function createChain(result: QueryResult = {}) {
   return chain;
 }
 
+/** Supabase client mock for `canManageTenantScopedResource` tenant_members lookup. */
+export function createTenantMembersSupabaseMock(membership: { id: string } | null) {
+  const eqCalls: { column: string; value: string }[] = [];
+  const chain = {
+    select: () => chain,
+    eq: (column: string, value: string) => {
+      eqCalls.push({ column, value });
+      return chain;
+    },
+    maybeSingle: async () => ({ data: membership, error: null }),
+  };
+
+  return {
+    eqCalls,
+    createSupabaseServiceClient: () => ({
+      from: (table: string) => {
+        if (table !== "tenant_members") {
+          throw new Error(`Unexpected table: ${table}`);
+        }
+        return chain;
+      },
+    }),
+  };
+}
+
 export function createSupabaseMock(tableResults: Record<string, QueryResult | QueryResult[]>) {
   const tableCalls: string[] = [];
 
