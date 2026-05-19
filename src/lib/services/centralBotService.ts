@@ -51,9 +51,25 @@ export async function resolveTenantForCentralBot(input: {
     .maybeSingle();
 
   if (existingLink?.tenant_id) {
+    const tenant = Array.isArray(existingLink.tenants) ? existingLink.tenants[0] : existingLink.tenants;
+
+    if (input.companyCode?.trim()) {
+      const normalizedCode = input.companyCode.trim().toUpperCase();
+      const { data: codeRow } = await supabase
+        .from("tenant_company_codes")
+        .select("tenant_id")
+        .eq("code", normalizedCode)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (codeRow?.tenant_id && codeRow.tenant_id !== existingLink.tenant_id) {
+        return { ok: false, reason: "tenant_conflict" };
+      }
+    }
+
     return {
       ok: true,
-      tenant: Array.isArray(existingLink.tenants) ? existingLink.tenants[0] : existingLink.tenants,
+      tenant,
       linked: true,
     };
   }

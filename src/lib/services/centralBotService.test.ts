@@ -258,4 +258,87 @@ describe("centralBotService", () => {
 
     expect(result).toEqual({ ok: false, reason: "tenant_conflict" });
   });
+
+  it("resolveTenantForCentralBot returns tenant_conflict when existing link and company code differ", async () => {
+    const linkedTenantId = "linked-tenant-id";
+    const client = {
+      from: (table: string) => {
+        if (table === "tenant_company_codes") {
+          const chain = {
+            select: () => chain,
+            eq: () => chain,
+            maybeSingle: async () => ({ data: { tenant_id: fakeTenant.id }, error: null }),
+          };
+          return chain;
+        }
+
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: { tenant_id: linkedTenantId, tenants: fakeTenant },
+                  error: null,
+                }),
+              }),
+            }),
+          }),
+        };
+      },
+    };
+
+    vi.doMock("@/lib/supabase/server", () => ({
+      createSupabaseServiceClient: () => client,
+    }));
+
+    const { resolveTenantForCentralBot } = await import("./centralBotService");
+    const result = await resolveTenantForCentralBot({
+      externalUserId: "line-user-001",
+      channel: "line",
+      companyCode: "OTHERCO",
+    });
+
+    expect(result).toEqual({ ok: false, reason: "tenant_conflict" });
+  });
+
+  it("resolveTenantForCentralBot keeps existing tenant when company code matches linked tenant", async () => {
+    const client = {
+      from: (table: string) => {
+        if (table === "tenant_company_codes") {
+          const chain = {
+            select: () => chain,
+            eq: () => chain,
+            maybeSingle: async () => ({ data: { tenant_id: fakeTenant.id }, error: null }),
+          };
+          return chain;
+        }
+
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: { tenant_id: fakeTenant.id, tenants: fakeTenant },
+                  error: null,
+                }),
+              }),
+            }),
+          }),
+        };
+      },
+    };
+
+    vi.doMock("@/lib/supabase/server", () => ({
+      createSupabaseServiceClient: () => client,
+    }));
+
+    const { resolveTenantForCentralBot } = await import("./centralBotService");
+    const result = await resolveTenantForCentralBot({
+      externalUserId: "line-user-001",
+      channel: "line",
+      companyCode: "ABC503",
+    });
+
+    expect(result).toEqual({ ok: true, tenant: fakeTenant, linked: true });
+  });
 });
