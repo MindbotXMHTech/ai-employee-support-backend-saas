@@ -480,6 +480,8 @@ Response:
 
 `company_code` is the **normalized** value (trimmed, uppercase) used for the `tenant_company_codes` row. Downstream mirrors (for example Mindbloom company upsert after register) should key on this field rather than re-parsing the request body.
 
+If the LINE user is already linked to a **different** tenant, the API returns HTTP **409** with `error.code` `TENANT_CONFLICT` and does not overwrite the link. Support must revoke the existing `employee_tenant_links` row before the user can register under another company.
+
 What gets stored:
 
 - `employee_tenant_links.id` as link UUID

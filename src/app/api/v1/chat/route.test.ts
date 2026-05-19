@@ -30,7 +30,7 @@ describe("POST /api/v1/chat", () => {
       authenticateBotRequest: vi.fn(),
     }));
     vi.doMock("@/lib/services/centralBotService", () => ({
-      resolveTenantForCentralBot: vi.fn(async () => null),
+      resolveTenantForCentralBot: vi.fn(async () => ({ ok: false, reason: "unresolved" })),
     }));
     vi.doMock("@/application/chat/v1-chat.use-case", () => ({
       executeV1Chat,
@@ -94,4 +94,47 @@ describe("POST /api/v1/chat", () => {
     });
     await expect(response.json()).resolves.toMatchObject(chatBody);
   });
+
+  it("returns 409 when central bot resolve hits tenant conflict", async () => {
+    vi.doMock("@/lib/api/auth", () => ({
+      authenticateCentralBotRequest: vi.fn(async () => ({ ok: true })),
+      authenticateBotRequest: vi.fn(),
+    }));
+    vi.doMock("@/lib/services/centralBotService", () => ({
+      resolveTenantForCentralBot: vi.fn(async () => ({ ok: false, reason: "tenant_conflict" })),
+      buildTenantConflictErrorBody: () => ({
+        success: false,
+        error: {
+          code: "TENANT_CONFLICT",
+          message:
+            "Unable to link this account. Contact your administrator if you need to change companies.",
+        },
+      }),
+    }));
+    vi.doMock("@/application/chat/v1-chat.use-case", () => ({
+      executeV1Chat,
+    }));
+
+    const { POST } = await import("./route");
+    const response = await POST(
+      jsonRequest(
+        "http://localhost/api/v1/chat",
+        {
+          external_user_id: "line-user-001",
+          channel: "line",
+          company_code: "OTHERCO",
+          message: "hello",
+        },
+        { "x-central-bot-secret": "secret" },
+      ),
+    );
+
+    expect(response.status).toBe(409);
+    expect(executeV1Chat).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      error: { code: "TENANT_CONFLICT" },
+    });
+  });
 });
+

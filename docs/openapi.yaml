@@ -96,6 +96,8 @@ paths:
                 error:
                   code: INVALID_COMPANY_CODE
                   message: Invalid or revoked company code.
+        "409":
+          $ref: "#/components/responses/TenantConflict"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -151,6 +153,8 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/TenantConflict"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -168,6 +172,10 @@ paths:
         Request fields: `user_id`, `message`, and `company_code`. Backend resolves
         tenant, upserts user-to-tenant link where applicable, then runs the same
         AI orchestration pipeline as `/api/v1/chat`.
+
+        **Cross-tenant link errors:** `x-central-bot-secret` paths return HTTP **409**
+        with `error.code` **`TENANT_CONFLICT`**. The `workflow_token` path returns HTTP **403**
+        with **`TENANT_MISMATCH`** when the user is already linked to a different tenant.
       security:
         - CentralBotSecret: []
       requestBody:
@@ -223,6 +231,8 @@ paths:
                 error:
                   code: INVALID_COMPANY_CODE
                   message: Invalid or revoked company code.
+        "409":
+          $ref: "#/components/responses/TenantConflict"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -251,6 +261,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/TenantNotResolved"
+        "409":
+          $ref: "#/components/responses/TenantConflict"
 
   /api/v1/usage:
     get:
@@ -276,6 +288,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/TenantNotResolved"
+        "409":
+          $ref: "#/components/responses/TenantConflict"
 
   /api/v1/partner/tenants:
     post:
@@ -862,6 +876,20 @@ components:
             error:
               code: TENANT_NOT_RESOLVED
               message: Company code is required for this employee.
+
+    TenantConflict:
+      description: |
+        Employee is already linked to a different tenant. Revoke the existing
+        `employee_tenant_links` row before registering under another company code.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            success: false
+            error:
+              code: TENANT_CONFLICT
+              message: Unable to link this account. Contact your administrator if you need to change companies.
 
   schemas:
     RegisterUserRequest:
