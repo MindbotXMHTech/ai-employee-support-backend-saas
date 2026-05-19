@@ -3,6 +3,31 @@ import { env } from "@/lib/env";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import type { Tenant } from "@/lib/types";
 
+export class TenantConflictError extends Error {
+  readonly code = "TENANT_CONFLICT";
+
+  constructor() {
+    super("Unable to link this account. Contact your administrator if you need to change companies.");
+    this.name = "TenantConflictError";
+  }
+}
+
+export function buildTenantConflictErrorBody(): {
+  success: false;
+  error: { code: "TENANT_CONFLICT"; message: string };
+} {
+  const error = new TenantConflictError();
+  return {
+    success: false,
+    error: { code: error.code, message: error.message },
+  };
+}
+
+export type CentralBotTenantResolution =
+  | { ok: true; tenant: Tenant; linked: boolean }
+  | { ok: false; reason: "unresolved" }
+  | { ok: false; reason: "tenant_conflict" };
+
 export function validateCentralBotSecret(secret: string | null) {
   if (!env.CENTRAL_BOT_SECRET || !secret) return false;
   const actual = Buffer.from(secret);
@@ -15,7 +40,7 @@ export async function resolveTenantForCentralBot(input: {
   externalUserId: string;
   channel: string;
   companyCode?: string;
-}) {
+}): Promise<CentralBotTenantResolution> {
   const supabase = createSupabaseServiceClient();
 
   const { data: existingLink } = await supabase
@@ -27,27 +52,38 @@ export async function resolveTenantForCentralBot(input: {
 
   if (existingLink?.tenant_id) {
     return {
+      ok: true,
       tenant: Array.isArray(existingLink.tenants) ? existingLink.tenants[0] : existingLink.tenants,
       linked: true,
     };
   }
 
   if (!input.companyCode) {
-    return null;
+    return { ok: false, reason: "unresolved" };
   }
 
-  const registered = await registerEmployeeTenantLink({
-    externalUserId: input.externalUserId,
-    channel: input.channel,
-    companyCode: input.companyCode,
-  });
+  try {
+    const registered = await registerEmployeeTenantLink({
+      externalUserId: input.externalUserId,
+      channel: input.channel,
+      companyCode: input.companyCode,
+    });
 
-  if (!registered) return null;
+    if (!registered) {
+      return { ok: false, reason: "unresolved" };
+    }
 
-  return {
-    tenant: registered.tenant,
-    linked: false,
-  };
+    return {
+      ok: true,
+      tenant: registered.tenant,
+      linked: false,
+    };
+  } catch (error) {
+    if (error instanceof TenantConflictError) {
+      return { ok: false, reason: "tenant_conflict" };
+    }
+    throw error;
+  }
 }
 
 export async function registerEmployeeTenantLink(input: {
@@ -68,6 +104,17 @@ export async function registerEmployeeTenantLink(input: {
 
   if (!companyCode?.tenant_id) {
     return null;
+  }
+
+  const { data: existingLink } = await supabase
+    .from("employee_tenant_links")
+    .select("tenant_id")
+    .eq("external_user_id", input.externalUserId)
+    .eq("channel", input.channel)
+    .maybeSingle();
+
+  if (existingLink && existingLink.tenant_id !== companyCode.tenant_id) {
+    throw new TenantConflictError();
   }
 
   const tenant = Array.isArray(companyCode.tenants) ? companyCode.tenants[0] : companyCode.tenants;
@@ -111,6 +158,4 @@ export function centralBotNeedsCompanyCodeResponse() {
   };
 }
 
-export type ResolvedCentralTenant = Awaited<ReturnType<typeof resolveTenantForCentralBot>> & {
-  tenant?: Tenant;
-};
+export type ResolvedCentralTenant = Extract<CentralBotTenantResolution, { ok: true }>;

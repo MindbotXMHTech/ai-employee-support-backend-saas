@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { executeV1Chat } from "@/application/chat/v1-chat.use-case";
 import { authenticateBotRequest, authenticateCentralBotRequest } from "@/lib/api/auth";
-import { resolveTenantForCentralBot } from "@/lib/services/centralBotService";
+import { buildTenantConflictErrorBody, resolveTenantForCentralBot } from "@/lib/services/centralBotService";
 import { chatRequestSchema } from "@/lib/validation/chat";
 
 export async function POST(request: NextRequest) {
@@ -28,7 +28,10 @@ export async function POST(request: NextRequest) {
         companyCode: parsed.data.company_code,
       });
 
-      if (!resolved?.tenant) {
+      if (!resolved.ok) {
+        if (resolved.reason === "tenant_conflict") {
+          return NextResponse.json(buildTenantConflictErrorBody(), { status: 409 });
+        }
         const result = await executeV1Chat({ kind: "central_needs_company_code" });
         return NextResponse.json(result.body, { status: result.statusCode });
       }

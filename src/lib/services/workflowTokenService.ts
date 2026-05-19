@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { env } from "@/lib/env";
 import type { Tenant } from "@/lib/types";
-import { registerEmployeeTenantLink } from "@/lib/services/centralBotService";
+import { registerEmployeeTenantLink, TenantConflictError } from "@/lib/services/centralBotService";
 
 const WORKFLOW_TOKEN_PREFIX = "wf_live_";
 
@@ -159,15 +159,22 @@ export async function resolveTenantForWorkflowChat(input: {
     return { ok: false, kind: "invalid_company_code" };
   }
 
-  const registered = await registerEmployeeTenantLink({
-    externalUserId: input.externalUserId,
-    channel: input.channel,
-    companyCode: input.companyCode,
-  });
+  try {
+    const registered = await registerEmployeeTenantLink({
+      externalUserId: input.externalUserId,
+      channel: input.channel,
+      companyCode: input.companyCode,
+    });
 
-  if (!registered?.tenant) {
-    return { ok: false, kind: "invalid_company_code" };
+    if (!registered?.tenant) {
+      return { ok: false, kind: "invalid_company_code" };
+    }
+
+    return { ok: true, tenant: registered.tenant };
+  } catch (error) {
+    if (error instanceof TenantConflictError) {
+      return { ok: false, kind: "tenant_mismatch" };
+    }
+    throw error;
   }
-
-  return { ok: true, tenant: registered.tenant };
 }

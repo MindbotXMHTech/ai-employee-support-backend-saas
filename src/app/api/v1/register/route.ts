@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateCentralBotRequest } from "@/lib/api/auth";
-import { registerEmployeeTenantLink } from "@/lib/services/centralBotService";
+import {
+  buildTenantConflictErrorBody,
+  registerEmployeeTenantLink,
+  TenantConflictError,
+} from "@/lib/services/centralBotService";
 import { registerUserRequestSchema } from "@/lib/validation/chat";
 
 export async function POST(request: NextRequest) {
@@ -52,6 +56,9 @@ export async function POST(request: NextRequest) {
       channel: parsed.data.channel,
     });
   } catch (error) {
+    if (error instanceof TenantConflictError) {
+      return NextResponse.json(buildTenantConflictErrorBody(), { status: 409 });
+    }
     console.error("register_user_error", error);
     return NextResponse.json(
       { success: false, error: { code: "INTERNAL_ERROR", message: "Internal server error." } },
