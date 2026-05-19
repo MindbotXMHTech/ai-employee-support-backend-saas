@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { canManageTenantScopedResource } from "@/lib/auth/tenantScopedAccess";
 import { requireAdminUser } from "@/lib/auth/admin";
 import { createApiKey } from "@/lib/services/apiKeyService";
 import { apiKeyCreateSchema } from "@/lib/validation/admin";
@@ -9,6 +10,12 @@ export async function POST(request: NextRequest) {
 
   const parsed = apiKeyCreateSchema.safeParse(await request.json());
   if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
+
+  const canManage = await canManageTenantScopedResource({
+    tenantId: parsed.data.tenant_id,
+    appUser: admin.appUser,
+  });
+  if (!canManage) return NextResponse.json({ error: "Forbidden." }, { status: 403 });
 
   const apiKey = await createApiKey({
     tenantId: parsed.data.tenant_id,
