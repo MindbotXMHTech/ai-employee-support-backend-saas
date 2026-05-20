@@ -22,3 +22,14 @@ export const partnerProvisionTenantSchema = z.object({
 });
 
 export type PartnerProvisionTenantInput = z.infer<typeof partnerProvisionTenantSchema>;
+
+export const partnerTenantPlanSyncSchema = z.object({
+  company_code: companyCodeField,
+  plan: z.enum(["free", "trial", "pro"]),
+  status: z.enum(["active", "suspended", "expired"]),
+  event_id: z.string().trim().min(1, "event_id is required").max(200),
+  occurred_at: z.string().datetime().optional(),
+  updated_by: z.string().trim().max(200).optional(),
+});
+
+export type PartnerTenantPlanSyncInput = z.infer<typeof partnerTenantPlanSyncSchema>;
