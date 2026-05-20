@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import { env } from "@/lib/env";
+import { requireEnv } from "@/lib/env";
 import type { Tenant } from "@/lib/types";
 import { registerEmployeeTenantLink, TenantConflictError } from "@/lib/services/centralBotService";
 
@@ -8,7 +8,7 @@ const WORKFLOW_TOKEN_PREFIX = "wf_live_";
 
 /** Domain-separated from api_keys hashing. */
 export function hashWorkflowToken(rawKey: string) {
-  const secret = env.API_KEY_SECRET ?? "development-api-key-secret";
+  const secret = requireEnv("API_KEY_SECRET");
   return crypto.createHmac("sha256", secret).update(`workflow_token:v1|${rawKey}`).digest("hex");
 }
 

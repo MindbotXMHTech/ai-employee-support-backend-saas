@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   generateRawWorkflowToken,
   getWorkflowTokenPrefix,
@@ -6,6 +6,17 @@ import {
 } from "@/lib/services/workflowTokenService";
 
 describe("workflowTokenService", () => {
+  it("throws when API_KEY_SECRET is unset", async () => {
+    vi.stubEnv("API_KEY_SECRET", "");
+    vi.resetModules();
+    try {
+      const { hashWorkflowToken: hashWithoutSecret } = await import("@/lib/services/workflowTokenService");
+      expect(() => hashWithoutSecret("wf_live_test")).toThrow(/API_KEY_SECRET/);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
+  });
   it("generates prefixed raw tokens and hashes without storing raw values", () => {
     const rawKey = generateRawWorkflowToken();
     expect(rawKey).toMatch(/^wf_live_/);
