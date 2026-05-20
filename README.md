@@ -371,6 +371,16 @@ Example body fields: `company_code` (required, alphanumeric, normalized to upper
 - Use **`x-tenant-provision-secret`** header (timing-safe comparison). Separate from **`x-central-bot-secret`** used by LINE.
 - Duplicate `company_code` → **`409`** with `COMPANY_CODE_TAKEN`.
 
+When LINE LIFF is the source of truth for subscription changes, push plan/status changes back to this SaaS runtime copy:
+
+```http
+POST /api/v1/partner/tenants/sync-plan
+x-tenant-provision-secret: <TENANT_PROVISION_SECRET same as env>
+Content-Type: application/json
+```
+
+Example body: `company_code` (required; normalized to uppercase), `plan` (`free`, `trial`, `pro`), `status` (`active`, `suspended`, `expired`), `event_id` (required for retry-safe idempotency), optional `occurred_at` and `updated_by`. The endpoint resolves the tenant from the active company code, updates `tenants.plan` / `tenants.status`, and writes an audit log. Do not send `tenant_id` from LIFF.
+
 See `docs/openapi.yaml` tag **Partner API** for schemas.
 
 **Optional — Platform Admin API (auto-generated company code)**

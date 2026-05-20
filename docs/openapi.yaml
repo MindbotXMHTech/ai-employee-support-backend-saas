@@ -366,6 +366,61 @@ paths:
                     properties:
                       code: { type: string, example: INTERNAL_ERROR }
                       message: { type: string }
+
+  /api/v1/partner/tenants/sync-plan:
+    post:
+      tags: [Partner API]
+      summary: Sync tenant plan/status from LINE LIFF
+      description: |
+        Server-to-server endpoint for the LINE LIFF company system to push subscription
+        changes into this SaaS runtime database. The shared identity is `company_code`;
+        external clients must not send or choose `tenant_id`.
+
+        Requires `TENANT_PROVISION_SECRET` on the server and matching
+        `x-tenant-provision-secret`. `event_id` is required so callers can safely retry.
+      security:
+        - TenantProvisionSecret: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PartnerTenantPlanSyncRequest"
+      responses:
+        "200":
+          description: Tenant plan/status synced.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerTenantPlanSyncResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Company code is missing or revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code: { type: string, example: COMPANY_CODE_NOT_FOUND }
+                      message: { type: string, example: Invalid or revoked company code. }
+        "500":
+          description: Sync failed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code: { type: string, example: INTERNAL_ERROR }
+                      message: { type: string }
         "503":
           description: Partner provisioning not configured (missing TENANT_PROVISION_SECRET).
           content:
@@ -1236,6 +1291,46 @@ components:
             provisioned_company_code:
               type: string
               description: Echo of persisted company_code (normalized).
+
+    PartnerTenantPlanSyncRequest:
+      type: object
+      required: [company_code, plan, status, event_id]
+      properties:
+        company_code:
+          type: string
+          description: Shared company code; normalized to uppercase before lookup.
+          minLength: 4
+          maxLength: 64
+          pattern: "^[A-Za-z0-9]+$"
+        plan:
+          type: string
+          enum: [free, trial, pro]
+        status:
+          type: string
+          enum: [active, suspended, expired]
+        event_id:
+          type: string
+          description: Unique LIFF event id for retry-safe idempotency.
+        occurred_at:
+          type: string
+          format: date-time
+        updated_by:
+          type: string
+
+    PartnerTenantPlanSyncResponse:
+      type: object
+      required: [success, idempotent, tenant, company_code]
+      properties:
+        success:
+          type: boolean
+          example: true
+        idempotent:
+          type: boolean
+          description: True when the same event_id was already processed.
+        tenant:
+          $ref: "#/components/schemas/Tenant"
+        company_code:
+          type: string
 
     CreateTenantRequest:
       type: object

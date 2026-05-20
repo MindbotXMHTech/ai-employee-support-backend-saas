@@ -1,7 +1,7 @@
 import { isAuthError } from "@supabase/supabase-js";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { env } from "@/lib/env";
-import type { Tenant } from "@/lib/types";
+import type { Tenant, TenantPlan, TenantStatus } from "@/lib/types";
 import crypto from "node:crypto";
 import {
   ensureCompanyCodeForTenant,
@@ -19,6 +19,15 @@ export class AdminEmailTakenError extends Error {
   constructor(message = "This admin email is already registered.") {
     super(message);
     this.name = "AdminEmailTakenError";
+  }
+}
+
+export class TenantCompanyCodeNotFoundError extends Error {
+  readonly code = "COMPANY_CODE_NOT_FOUND";
+
+  constructor(message = "Invalid or revoked company code.") {
+    super(message);
+    this.name = "TenantCompanyCodeNotFoundError";
   }
 }
 
@@ -184,6 +193,79 @@ export async function downgradeExpiredTrialTenantsToFree(
     downgraded: results.filter((result) => result.ok).length,
     synced: results.filter((result) => result.ok && result.synced).length,
     results,
+  };
+}
+
+export async function syncTenantPlanFromPartner(input: {
+  company_code: string;
+  plan: TenantPlan;
+  status: TenantStatus;
+  event_id: string;
+  occurred_at?: string;
+  updated_by?: string;
+}) {
+  const supabase = createSupabaseServiceClient();
+  const normalizedCode = input.company_code.trim().toUpperCase();
+
+  const { data: companyCode, error: codeError } = await supabase
+    .from("tenant_company_codes")
+    .select("id, tenant_id, code, tenants(*)")
+    .eq("code", normalizedCode)
+    .eq("status", "active")
+    .maybeSingle();
+  if (codeError) throw codeError;
+  if (!companyCode?.tenant_id) throw new TenantCompanyCodeNotFoundError();
+
+  const tenant = Array.isArray(companyCode.tenants) ? companyCode.tenants[0] : companyCode.tenants;
+
+  const { data: existingEvent, error: eventError } = await supabase
+    .from("audit_logs")
+    .select("id")
+    .eq("tenant_id", companyCode.tenant_id)
+    .eq("action", "tenant.plan_synced_from_partner")
+    .contains("metadata", { event_id: input.event_id })
+    .maybeSingle();
+  if (eventError) throw eventError;
+
+  if (existingEvent) {
+    return {
+      tenant: tenant as Tenant,
+      companyCode,
+      idempotent: true,
+    };
+  }
+
+  const { data: updatedTenant, error: updateError } = await supabase
+    .from("tenants")
+    .update({ plan: input.plan, status: input.status })
+    .eq("id", companyCode.tenant_id)
+    .select("*")
+    .single();
+  if (updateError) throw updateError;
+
+  await supabase.from("audit_logs").insert({
+    tenant_id: companyCode.tenant_id,
+    actor_user_id: null,
+    action: "tenant.plan_synced_from_partner",
+    target_type: "tenant",
+    target_id: companyCode.tenant_id,
+    metadata: {
+      event_id: input.event_id,
+      company_code: normalizedCode,
+      previous_plan: tenant?.plan ?? null,
+      previous_status: tenant?.status ?? null,
+      plan: input.plan,
+      status: input.status,
+      occurred_at: input.occurred_at ?? null,
+      updated_by: input.updated_by ?? null,
+      source: "line_liff",
+    },
+  });
+
+  return {
+    tenant: updatedTenant as Tenant,
+    companyCode,
+    idempotent: false,
   };
 }
 
