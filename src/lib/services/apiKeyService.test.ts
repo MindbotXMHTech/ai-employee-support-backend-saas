@@ -1,7 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { generateRawApiKey, getApiKeyPrefix, hashApiKey } from "@/lib/services/apiKeyService";
 
 describe("apiKeyService", () => {
+  it("throws when API_KEY_SECRET is unset", async () => {
+    vi.stubEnv("API_KEY_SECRET", "");
+    vi.resetModules();
+    try {
+      const { hashApiKey: hashWithoutSecret } = await import("@/lib/services/apiKeyService");
+      expect(() => hashWithoutSecret("aibot_live_test")).toThrow(/API_KEY_SECRET/);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
+  });
   it("generates prefixed raw keys and hashes without storing raw values", () => {
     const rawKey = generateRawApiKey();
     expect(rawKey).toMatch(/^aibot_live_/);

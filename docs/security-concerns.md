@@ -43,11 +43,17 @@
 
 **เทียบ:** การอัปโหลดเอกสารมี `canManageTenantDocuments()` อยู่แล้ว (`src/app/api/admin/documents/route.ts`)
 
-### 4. Secret ที่ optional และ default ใน hash API key
+### 4. Secret ที่ optional และ default ใน hash API key — **แก้แล้ว (MB-860)**
 
-**พฤติกรรม:** `API_KEY_SECRET` เป็น optional และมี fallback constant เมื่อ env ว่าง (`apiKeyService.hashApiKey`)
+**เดิม:** `API_KEY_SECRET` เป็น optional และมี fallback `development-api-key-secret` ใน `hashApiKey` / `hashWorkflowToken`
 
-**ความเสี่ยง:** ใน production หากลืมตั้งค่า การเก็บ key hash ผูกกับค่าที่พยายามทำความเข้าใจได้จากโค้ด/สภาพแวดล้อม dev — ความเข้มแข็งของการปกป้อง key เสื่อม
+**ปัจจุบัน (MB-860):**
+
+- `requireEnv("API_KEY_SECRET")` ตอน hash — ไม่มี default
+- Production boot: `src/instrumentation.ts` เรียก `requireEnv` และ `process.exit(1)` ถ้าขาด
+- Vitest ตั้ง `API_KEY_SECRET` ใน `vitest.config.mts`
+
+**ที่ยังต้องทำฝั่ง ops:** ตั้ง `API_KEY_SECRET` ใน Vercel/CI runtime; ถ้า production เคยรันโดยไม่ตั้งค่า ให้ rotate secret และออก API key / workflow token ใหม่ทั้งหมด — [`docs/release-notes/MB-860-api-key-secret.md`](release-notes/MB-860-api-key-secret.md)
 
 ### 5. Central bot secret ไม่ได้บังคับใน schema env
 
@@ -107,7 +113,7 @@
 | Risk | Topic |
 |------|--------|
 | Critical (mitigated เมื่อเปิดใช้) | Bootstrap: ตั้ง `PLATFORM_SETUP_SECRET` บังคับ token; ยังเปิดได้ถ้าไม่ตั้งค่าเช่น dev — API key revoke จำกัดตาม tenant membership + platform_admin |
-| High | Arbitrary `tenant_id` บน playground + สร้าง API key; `API_KEY_SECRET` optional + default hash |
+| High | Arbitrary `tenant_id` บน playground + สร้าง API key (`API_KEY_SECRET` default hash — **แก้แล้ว MB-860**) |
 | Medium | Detailed errors to client; legacy key blast radius; no in-app rate limit; LLM/RAG threats |
 | Low | Timing-safe bot secret good; docs upload checks good; multi-tenant picker edge |
 
@@ -118,7 +124,7 @@
 1. ผูก `tenant_id` กับ membership สำหรับ playground และ API keys **เมื่อสร้างใหม่**
 2. ตั้ง `PLATFORM_SETUP_SECRET` ใน production และหมุนหลัง bootstrap เสร็จ
 3. ทำ error response consistency (generic user message)
-4. บังคับ `API_KEY_SECRET` และ `CENTRAL_BOT_SECRET` ใน production พร้อม deploy check
+4. ~~บังคับ `API_KEY_SECRET` ใน production~~ (MB-860 — boot + hash fail closed); ยังต้องบังคับ `CENTRAL_BOT_SECRET` ใน production พร้อม deploy check
 5. เติม security regression tests ตามรายการใน `regression-test-document.md`
 
 ---

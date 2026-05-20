@@ -1,11 +1,11 @@
 import crypto from "node:crypto";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import { env } from "@/lib/env";
+import { requireEnv } from "@/lib/env";
 
 const API_KEY_PREFIX = "aibot_live";
 
 export function hashApiKey(rawKey: string) {
-  const secret = env.API_KEY_SECRET ?? "development-api-key-secret";
+  const secret = requireEnv("API_KEY_SECRET");
   return crypto.createHmac("sha256", secret).update(rawKey).digest("hex");
 }
 

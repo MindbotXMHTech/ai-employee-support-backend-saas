@@ -10,5 +10,8 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
+    env: {
+      API_KEY_SECRET: "test-api-key-secret",
+    },
   },
 });
