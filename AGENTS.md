@@ -79,6 +79,8 @@ Tenant creation records a `company_code` for LINE registration:
 
 LINE users register by sending that company code.
 
+Re-registering with a different tenant's `company_code` is rejected (`TENANT_CONFLICT`, HTTP 409). To move an employee to another tenant, revoke their `employee_tenant_links` row (platform admin) then register again.
+
 Main bot-facing endpoints:
 
 - `POST /api/v1/register` - link `line_user_id` or `external_user_id` to a tenant using `company_code`

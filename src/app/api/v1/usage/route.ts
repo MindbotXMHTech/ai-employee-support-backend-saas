@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateBotRequest, authenticateCentralBotRequest } from "@/lib/api/auth";
-import { resolveTenantForCentralBot } from "@/lib/services/centralBotService";
+import { buildTenantConflictErrorBody, resolveTenantForCentralBot } from "@/lib/services/centralBotService";
 import { getQuotaSnapshot, currentMonthStart } from "@/lib/services/quotaService";
 import { usageSummary } from "@/lib/services/usageService";
 import type { Tenant } from "@/lib/types";
@@ -26,7 +26,10 @@ export async function GET(request: NextRequest) {
       channel: searchParams.get("channel") ?? "api",
       companyCode: searchParams.get("company_code") ?? undefined,
     });
-    if (!resolved?.tenant) {
+    if (!resolved.ok) {
+      if (resolved.reason === "tenant_conflict") {
+        return NextResponse.json(buildTenantConflictErrorBody(), { status: 409 });
+      }
       return NextResponse.json(
         { success: false, error: { code: "TENANT_NOT_RESOLVED", message: "Company code is required for this employee." } },
         { status: 404 },
