@@ -220,8 +220,22 @@ Notes:
 - `MINDBLOOM_PROVISION_URL` / `MINDBLOOM_PROVISION_SECRET` are server-only; used to notify Mindbloom after tenant onboarding. Omit both to disable.
 - `TENANT_PROVISION_SECRET` enables `POST /api/v1/partner/tenants`; send the same value in header **`x-tenant-provision-secret`**. Omit to keep that route disabled (`503`). Do not reuse in browser bundles.
 - `PLATFORM_SETUP_SECRET`, when set, requires `setup_secret` in JSON or `x-platform-setup-secret` for first-time `/api/setup/platform-admin`; generate with **`npm run secrets:platform-setup`**. Omit locally if you rely on trusted networks only.
-- `API_KEY_SECRET` is used only for legacy tenant API key hashing.
+- `API_KEY_SECRET` — HMAC secret for **legacy tenant API keys** (`x-api-key`) and **workflow HTTP tokens** (`workflow_token` on `POST /api/v2/chat`). **Required in production** (server boot fails without it via `src/instrumentation.ts`). **Required in local dev** whenever you create or validate those keys/tokens (admin UI or `POST /api/admin/workflow-tokens` / `POST /api/admin/api-keys`). There is **no default**; unset values fail closed at hash time. Generate with `openssl rand -hex 32` and store only in `.env.local` or your host secrets — never commit. Central bot auth (`x-central-bot-secret`) does not use this variable unless you also use API keys or workflow tokens.
 - Model values can also be controlled per tenant by Platform Admin in the UI.
+
+### Deployment (Vercel / production)
+
+Set server-only secrets in the hosting provider (e.g. Vercel → Project → Settings → Environment Variables):
+
+| Variable | When required |
+|----------|----------------|
+| `API_KEY_SECRET` | **Production** always (boot check). **Preview** too if that environment issues or validates workflow tokens / legacy API keys. |
+| `CENTRAL_BOT_SECRET` | Production (and any env that receives central bot traffic). |
+| `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, … | Any real deployment |
+
+For **CI** pipelines that run `NODE_ENV=production npm run start` (or similar smoke tests), add `API_KEY_SECRET` to CI secrets with the same rules as production runtime.
+
+Ops note after deploy: if production ever ran without `API_KEY_SECRET` (old default hash), rotate the secret and re-issue all API keys and workflow tokens — see [`docs/release-notes/MB-860-api-key-secret.md`](docs/release-notes/MB-860-api-key-secret.md).
 
 ## Supabase Database
 
@@ -608,7 +622,7 @@ Header:
 x-api-key: aibot_live_...
 ```
 
-It uses `API_KEY_SECRET` for HMAC hashing. This is not the recommended path for the central LINE bot.
+It uses `API_KEY_SECRET` for HMAC hashing (required when creating or validating keys — see Environment Variables). This is not the recommended path for the central LINE bot.
 
 ## AI Routing
 
