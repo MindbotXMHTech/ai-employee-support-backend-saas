@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkPartnerProvisionRateLimit } from "@/lib/api/partnerRateLimit";
 import { TENANT_PROVISION_SECRET_HEADER, validateTenantProvisionSecret } from "@/lib/api/tenantProvisionAuth";
 import { env } from "@/lib/env";
 import { TenantCompanyCodeNotFoundError, syncTenantPlanFromPartner } from "@/lib/services/tenantService";
 import { partnerTenantPlanSyncSchema } from "@/lib/validation/partnerProvision";
 
 /**
- * Partner / LINE LIFF subscription sync: updates this SaaS runtime copy by company code.
- * Company code remains the cross-system identity; never accept tenant_id from external clients.
+ * Partner quota sync: updates SaaS runtime monthly_message_limit + derived status by company code.
  */
 export async function POST(request: NextRequest) {
   if (!env.TENANT_PROVISION_SECRET?.trim()) {
@@ -47,6 +47,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const rateLimit = checkPartnerProvisionRateLimit({
+    ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? request.headers.get("x-real-ip"),
+    companyCode: parsed.data.company_code,
+  });
+  if (!rateLimit.ok) {
+    return NextResponse.json(
+      { error: { code: "RATE_LIMITED", message: "Too many sync requests." } },
+      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSec) } },
+    );
+  }
+
   try {
     const result = await syncTenantPlanFromPartner(parsed.data);
     return NextResponse.json({
@@ -64,7 +75,7 @@ export async function POST(request: NextRequest) {
     }
     console.error("partner_sync_tenant_plan_error", error);
     return NextResponse.json(
-      { error: { code: "INTERNAL_ERROR", message: "Failed to sync tenant plan." } },
+      { error: { code: "INTERNAL_ERROR", message: "Failed to sync tenant quota." } },
       { status: 500 },
     );
   }

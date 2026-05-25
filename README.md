@@ -365,13 +365,14 @@ x-tenant-provision-secret: <TENANT_PROVISION_SECRET same as env>
 Content-Type: application/json
 ```
 
-Example body fields: `company_code` (required, alphanumeric, normalized to uppercase—must be unique), `name`, `plan`, `admin_email`, `admin_display_name`, optional profile fields (`industry`, `company_description`, etc.). Seeds tenant profile, tenant admin user (Supabase Auth), defaults for AI settings and escalation, plus `temporaryPassword` in response.
+Example body fields: `company_code` (required, alphanumeric, normalized to uppercase—must be unique), `name`, `quota` (integer 0–1_000_000 → `monthly_message_limit`), `admin_email`, `admin_display_name`, optional profile fields (`industry`, `company_description`, etc.). Creates runtime tenant + company code only. **Mindbloom** owns plan/status and HR portal credentials — no SaaS Auth user or `temporaryPassword` in the partner response. `status` on the tenant row is derived: `quota > 0` → `active`, `quota = 0` → `suspended`.
 
 - Set `TENANT_PROVISION_SECRET` in the server env; if unset this route returns **`503`**.
 - Use **`x-tenant-provision-secret`** header (timing-safe comparison). Separate from **`x-central-bot-secret`** used by LINE.
 - Duplicate `company_code` → **`409`** with `COMPANY_CODE_TAKEN`.
+- Rate limited per IP and per `company_code`.
 
-When LINE LIFF is the source of truth for subscription changes, push plan/status changes back to this SaaS runtime copy:
+When Mindbloom (Super Admin / LIFF) changes entitlement, push **quota only** to this SaaS runtime copy:
 
 ```http
 POST /api/v1/partner/tenants/sync-plan
@@ -379,7 +380,7 @@ x-tenant-provision-secret: <TENANT_PROVISION_SECRET same as env>
 Content-Type: application/json
 ```
 
-Example body: `company_code` (required; normalized to uppercase), `plan` (`free`, `trial`, `pro`), `status` (`active`, `suspended`, `expired`), `event_id` (required for retry-safe idempotency), optional `occurred_at` and `updated_by`. The endpoint resolves the tenant from the active company code, updates `tenants.plan` / `tenants.status`, and writes an audit log. Do not send `tenant_id` from LIFF.
+Example body: `company_code` (required; normalized to uppercase), `quota` (integer 0–1_000_000), `event_id` (required for retry-safe idempotency), optional `occurred_at` and `updated_by`. The endpoint resolves the tenant from the active company code, updates `tenants.monthly_message_limit` and derives `tenants.status` from quota, and writes an audit log. Do not send `tenant_id`, `plan`, or `status` from Mindbloom.
 
 See `docs/openapi.yaml` tag **Partner API** for schemas.
 
@@ -689,11 +690,14 @@ Trial defaults:
 - 10 files
 - 50 MB storage
 
-When an active trial tenant reaches `trial_ends_at`, the scheduled `/api/jobs/expire-trials` job changes the tenant plan to `free`, sets `status = "expired"` to block chat, writes an audit log, and sends the updated `plan` to the Mindbloom company mirror when provisioning env vars are configured. The chat availability check also performs the same downgrade for that tenant if a scheduler is late.
+When an active trial tenant reaches `trial_ends_at`, the scheduled `/api/jobs/expire-trials` job changes the tenant plan to `free`, sets `status = "expired"`, writes an audit log, and sends the updated `plan` to the Mindbloom company mirror when provisioning env vars are configured. The chat availability check also performs the same downgrade for that tenant if a scheduler is late.
+
+Chat blocks tenants with `monthly_message_limit <= 0` at the availability layer (`TENANT_SUSPENDED`, `success: false`) before quota counting or OpenAI. Mindbloom pushes quota via partner sync; SaaS does not downgrade partner tenants on trial expiry.
 
 Free defaults:
 
-- 500 messages
+- Chat not available (`plan = "free"` is hard-blocked at availability)
+- 500 messages (stored limit; not used for chat while plan is free)
 - 10 files
 - 50 MB storage
 

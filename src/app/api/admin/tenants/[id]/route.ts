@@ -33,7 +33,26 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 
   const { id } = await params;
-  const parsed = tenantUpdateSchema.safeParse(await request.json());
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
+
+  const managedFields = ["name", "plan", "status", "monthly_message_limit"] as const;
+  if (body && typeof body === "object" && !Array.isArray(body)) {
+    for (const field of managedFields) {
+      if (field in body) {
+        return NextResponse.json(
+          { error: "Managed by Mindbloom partner sync." },
+          { status: 403 },
+        );
+      }
+    }
+  }
+
+  const parsed = tenantUpdateSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
 
   const supabase = createSupabaseServiceClient();

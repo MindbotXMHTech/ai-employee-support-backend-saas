@@ -43,7 +43,7 @@ describe("aiService", () => {
       getQuotaSnapshot: vi.fn(async () => ({ plan: "trial", used: 1, limit: 500, remaining: 499 })),
     }));
     vi.doMock("@/lib/services/tenantService", () => ({
-      enforceTenantAvailability: vi.fn(async () => ({ ok: true })),
+      enforceTenantAvailability: vi.fn(async (tenant) => ({ ok: true, tenant })),
     }));
     vi.doMock("@/lib/services/platformAiSettingsService", () => ({
       getTenantAiSettings: vi.fn(async () => ({
@@ -89,5 +89,45 @@ describe("aiService", () => {
       tenantId: fakeTenant.id,
       requestType: "general",
     }));
+  });
+
+  it("returns TRIAL_EXPIRED for free plan before quota or AI orchestration", async () => {
+    const checkQuota = vi.fn(async () => ({ ok: true, quota: { plan: "free", used: 0, limit: 0, remaining: 0 } }));
+    const logMessage = vi.fn();
+
+    vi.doMock("@/lib/services/quotaService", () => ({
+      checkQuota,
+      getQuotaSnapshot: vi.fn(),
+    }));
+    vi.doMock("@/lib/services/usageService", () => ({
+      logMessage,
+      logUsage: vi.fn(),
+    }));
+    vi.doMock("@/lib/services/tenantService", () => ({
+      enforceTenantAvailability: vi.fn(async () => ({
+        ok: false,
+        code: "TRIAL_EXPIRED",
+        message: "Free plan is not available for chat.",
+      })),
+    }));
+
+    const { handleChatRequest } = await import("./aiService");
+    const response = await handleChatRequest({
+      tenant: { ...fakeTenant, plan: "free", status: "expired" },
+      external_user_id: "line-user-001",
+      channel: "line",
+      message: "สวัสดีครับ",
+      conversation_id: "conversation-external-id",
+    });
+
+    expect(response).toEqual({
+      success: false,
+      error: {
+        code: "TRIAL_EXPIRED",
+        message: "Free plan is not available for chat.",
+      },
+    });
+    expect(checkQuota).not.toHaveBeenCalled();
+    expect(logMessage).not.toHaveBeenCalled();
   });
 });
