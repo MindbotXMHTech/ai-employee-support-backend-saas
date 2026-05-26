@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeChatResponse, fakeTenant } from "@/test/fixtures";
+import { SUBSCRIPTION_SUSPENDED_MESSAGE } from "@/lib/domain/tenantEntitlement";
 
 describe("executeCentralBotV2Chat", () => {
   afterEach(() => {
@@ -127,5 +128,41 @@ describe("executeCentralBotV2Chat", () => {
       success: false,
       error: { code: "TENANT_SUSPENDED", message: "Tenant suspended." },
     });
+  });
+
+  it("returns HTTP 400 when free tier tenant is blocked via suspended status", async () => {
+    const freeTierTenant = {
+      ...fakeTenant,
+      plan: "trial" as const,
+      status: "suspended" as const,
+      monthly_message_limit: 0,
+      trial_ends_at: null,
+    };
+    const handleChatRequest = vi.fn(async () => ({
+      success: false,
+      error: { code: "TENANT_SUSPENDED" as const, message: SUBSCRIPTION_SUSPENDED_MESSAGE },
+    }));
+    vi.doMock("@/lib/services/centralBotService", () => ({
+      registerEmployeeTenantLink: vi.fn(async () => ({ tenant: freeTierTenant })),
+    }));
+    vi.doMock("@/lib/services/aiService", () => ({
+      handleChatRequest,
+    }));
+
+    const { executeCentralBotV2Chat } = await import("./v2-chat.use-case");
+    const result = await executeCentralBotV2Chat({
+      user_id: "line-user-free",
+      message: "สวัสดีครับ",
+      company_code: "FREECO",
+    });
+
+    expect(result.statusCode).toBe(400);
+    expect(result.body).toEqual({
+      success: false,
+      error: { code: "TENANT_SUSPENDED", message: SUBSCRIPTION_SUSPENDED_MESSAGE },
+    });
+    expect(handleChatRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ tenant: freeTierTenant }),
+    );
   });
 });

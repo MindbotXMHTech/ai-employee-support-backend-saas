@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeTenant } from "@/test/fixtures";
+import { NO_QUOTA_ALLOCATION_MESSAGE } from "@/lib/domain/tenantEntitlement";
 
 describe("enforceTenantAvailability", () => {
   afterEach(() => {
@@ -20,7 +21,7 @@ describe("enforceTenantAvailability", () => {
     expect(result).toEqual({
       ok: false,
       code: "TENANT_SUSPENDED",
-      message: "Tenant has no message quota.",
+      message: NO_QUOTA_ALLOCATION_MESSAGE,
     });
   });
 

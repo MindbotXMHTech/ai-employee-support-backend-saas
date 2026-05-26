@@ -3,7 +3,7 @@ import { env } from "@/lib/env";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { classifyMessageRuleBased } from "@/lib/services/classificationService";
 import { estimateCost } from "@/lib/services/costService";
-import { checkQuota, getQuotaSnapshot } from "@/lib/services/quotaService";
+import { checkQuota, getQuotaSnapshot, QUOTA_EXCEEDED_REPLY } from "@/lib/services/quotaService";
 import { buildHandoff, classifySafetyLevelRuleBased, crisisResponse } from "@/lib/services/safetyService";
 import { enforceTenantAvailability } from "@/lib/services/tenantService";
 import { logMessage, logUsage } from "@/lib/services/usageService";
@@ -147,7 +147,7 @@ export async function handleChatRequest(input: ChatRequestInput & { tenant: Tena
   if (!quotaCheck.ok) {
     return {
       success: true,
-      reply: "ขณะนี้จำนวนข้อความของบริษัทถึงขีดจำกัดของแพ็กเกจแล้ว กรุณาติดต่อผู้ดูแลระบบของบริษัทเพื่ออัปเกรดหรือเพิ่มโควตาครับ",
+      reply: QUOTA_EXCEEDED_REPLY,
       message_type: "quota_exceeded",
       safety_level: "normal",
       conversation_id: input.conversation_id ?? "",

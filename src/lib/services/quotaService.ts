@@ -1,6 +1,10 @@
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import type { QuotaSnapshot, Tenant } from "@/lib/types";
 
+/** Employee-facing: usage quota exhausted (subscription still active). */
+export const QUOTA_EXCEEDED_REPLY =
+  "ขณะนี้จำนวนข้อความของบริษัทถึงขีดจำกัดของแพ็กเกจแล้ว กรุณาติดต่อผู้ดูแลระบบของบริษัทเพื่ออัปเกรดหรือเพิ่มโควตาครับ";
+
 export function currentMonthStart() {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();

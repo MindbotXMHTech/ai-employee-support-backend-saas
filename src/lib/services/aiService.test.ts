@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeTenant } from "@/test/fixtures";
+import { SUBSCRIPTION_EXPIRED_MESSAGE } from "@/lib/domain/tenantEntitlement";
+import { QUOTA_EXCEEDED_REPLY } from "@/lib/services/quotaService";
 import { createSupabaseMock } from "@/test/mockSupabase";
 
 describe("aiService", () => {
@@ -91,13 +93,14 @@ describe("aiService", () => {
     }));
   });
 
-  it("returns TRIAL_EXPIRED for free plan before quota or AI orchestration", async () => {
-    const checkQuota = vi.fn(async () => ({ ok: true, quota: { plan: "free", used: 0, limit: 0, remaining: 0 } }));
+  it("returns subscription expired for inactive tenant before quota or AI orchestration", async () => {
+    const checkQuota = vi.fn();
     const logMessage = vi.fn();
 
     vi.doMock("@/lib/services/quotaService", () => ({
       checkQuota,
       getQuotaSnapshot: vi.fn(),
+      QUOTA_EXCEEDED_REPLY,
     }));
     vi.doMock("@/lib/services/usageService", () => ({
       logMessage,
@@ -107,7 +110,7 @@ describe("aiService", () => {
       enforceTenantAvailability: vi.fn(async () => ({
         ok: false,
         code: "TRIAL_EXPIRED",
-        message: "Free plan is not available for chat.",
+        message: SUBSCRIPTION_EXPIRED_MESSAGE,
       })),
     }));
 
@@ -124,10 +127,45 @@ describe("aiService", () => {
       success: false,
       error: {
         code: "TRIAL_EXPIRED",
-        message: "Free plan is not available for chat.",
+        message: SUBSCRIPTION_EXPIRED_MESSAGE,
       },
     });
     expect(checkQuota).not.toHaveBeenCalled();
+    expect(logMessage).not.toHaveBeenCalled();
+  });
+
+  it("returns quota exceeded reply when usage quota is exhausted", async () => {
+    const logMessage = vi.fn();
+    const quotaSnapshot = { plan: "trial" as const, used: 500, limit: 500, remaining: 0 };
+
+    vi.doMock("@/lib/services/quotaService", () => ({
+      checkQuota: vi.fn(async () => ({ ok: false, quota: quotaSnapshot })),
+      getQuotaSnapshot: vi.fn(async () => quotaSnapshot),
+      QUOTA_EXCEEDED_REPLY,
+    }));
+    vi.doMock("@/lib/services/usageService", () => ({
+      logMessage,
+      logUsage: vi.fn(),
+    }));
+    vi.doMock("@/lib/services/tenantService", () => ({
+      enforceTenantAvailability: vi.fn(async (tenant) => ({ ok: true, tenant })),
+    }));
+
+    const { handleChatRequest } = await import("./aiService");
+    const response = await handleChatRequest({
+      tenant: fakeTenant,
+      external_user_id: "line-user-001",
+      channel: "line",
+      message: "สวัสดีครับ",
+      conversation_id: "conversation-external-id",
+    });
+
+    expect(response.success).toBe(true);
+    if (response.success) {
+      expect(response.message_type).toBe("quota_exceeded");
+      expect(response.reply).toBe(QUOTA_EXCEEDED_REPLY);
+      expect(response.quota).toEqual(quotaSnapshot);
+    }
     expect(logMessage).not.toHaveBeenCalled();
   });
 });

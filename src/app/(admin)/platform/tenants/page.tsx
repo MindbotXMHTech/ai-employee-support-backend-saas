@@ -24,7 +24,6 @@ export default async function TenantsPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Workspace ID</TableHead>
                 <TableHead>Company Code</TableHead>
-                <TableHead>Plan</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Usage</TableHead>
                 <TableHead>Documents</TableHead>
@@ -38,7 +37,6 @@ export default async function TenantsPage() {
                   <TableCell className="font-medium">{tenant.name}</TableCell>
                   <TableCell>{tenant.slug}</TableCell>
                   <TableCell className="font-mono">{tenant.companyCode ?? "-"}</TableCell>
-                  <TableCell><Badge>{tenant.plan}</Badge></TableCell>
                   <TableCell><Badge variant={tenant.status === "active" ? "success" : "warning"}>{tenant.status}</Badge></TableCell>
                   <TableCell>{tenant.messagesUsed}/{tenant.monthly_message_limit}</TableCell>
                   <TableCell>{tenant.documentsCount}</TableCell>

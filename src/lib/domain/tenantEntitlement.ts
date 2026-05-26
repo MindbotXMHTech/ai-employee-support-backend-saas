@@ -13,11 +13,30 @@ export type TenantEntitlementInput = Pick<
   "plan" | "status" | "monthly_message_limit" | "trial_ends_at"
 >;
 
-export const NO_QUOTA_CHAT_BLOCKED_MESSAGE = "Tenant has no message quota.";
-export const FREE_PLAN_CHAT_BLOCKED_MESSAGE = "Free plan is not available for chat.";
-export const TRIAL_EXPIRED_CHAT_BLOCKED_MESSAGE = "Trial period has expired.";
+/** Employee-facing: admin or partner sync suspension (no plan name exposed). */
+export const SUBSCRIPTION_SUSPENDED_MESSAGE =
+  "บริษัทถูกระงับการใช้งานชั่วคราว กรุณาติดต่อผู้ดูแลระบบของบริษัท";
 
-/** Pure entitlement check — legacy plan/status before quota so free/expired never bypass via stale limit. */
+/** Employee-facing: subscription expired or inactive (no plan name exposed). */
+export const SUBSCRIPTION_EXPIRED_MESSAGE =
+  "แพ็กเกจของบริษัทหมดอายุแล้ว กรุณาติดต่อผู้ดูแลระบบของบริษัท";
+
+/**
+ * Employee-facing: no message quota allocated (Mindbloom `calculateCompanyMessageQuota` → 0).
+ * Distinct from usage-layer `checkQuota` when limit > 0 but messages are used up.
+ */
+export const NO_QUOTA_ALLOCATION_MESSAGE =
+  "แพ็กเกจของบริษัทหมดอายุแล้ว กรุณาติดต่อผู้ดูแลระบบของบริษัท";
+
+function subscriptionExpired(): TenantAvailabilityResult {
+  return {
+    ok: false as const,
+    code: "TRIAL_EXPIRED" as const,
+    message: SUBSCRIPTION_EXPIRED_MESSAGE,
+  };
+}
+
+/** Pure entitlement check — separate status, expiry, and partner-sync quota allocation. */
 export function evaluateTenantEntitlement(
   tenant: TenantEntitlementInput,
   now: Date = new Date(),
@@ -26,23 +45,19 @@ export function evaluateTenantEntitlement(
     return {
       ok: false as const,
       code: "TENANT_SUSPENDED" as const,
-      message: "Tenant is suspended.",
+      message: SUBSCRIPTION_SUSPENDED_MESSAGE,
     };
   }
 
   if (tenant.status === "expired" || tenant.plan === "free") {
-    return {
-      ok: false as const,
-      code: "TRIAL_EXPIRED" as const,
-      message: FREE_PLAN_CHAT_BLOCKED_MESSAGE,
-    };
+    return subscriptionExpired();
   }
 
   if ((tenant.monthly_message_limit ?? 0) <= 0) {
     return {
       ok: false as const,
       code: "TENANT_SUSPENDED" as const,
-      message: NO_QUOTA_CHAT_BLOCKED_MESSAGE,
+      message: NO_QUOTA_ALLOCATION_MESSAGE,
     };
   }
 
@@ -51,11 +66,7 @@ export function evaluateTenantEntitlement(
     tenant.trial_ends_at &&
     new Date(tenant.trial_ends_at) <= now
   ) {
-    return {
-      ok: false as const,
-      code: "TRIAL_EXPIRED" as const,
-      message: TRIAL_EXPIRED_CHAT_BLOCKED_MESSAGE,
-    };
+    return subscriptionExpired();
   }
 
   return { ok: true as const, tenant: tenant as Tenant };

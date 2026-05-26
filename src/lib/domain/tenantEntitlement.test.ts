@@ -2,13 +2,15 @@ import { describe, expect, it } from "vitest";
 import { fakeTenant } from "@/test/fixtures";
 import {
   evaluateTenantEntitlement,
-  FREE_PLAN_CHAT_BLOCKED_MESSAGE,
-  NO_QUOTA_CHAT_BLOCKED_MESSAGE,
-  TRIAL_EXPIRED_CHAT_BLOCKED_MESSAGE,
+  NO_QUOTA_ALLOCATION_MESSAGE,
+  SUBSCRIPTION_EXPIRED_MESSAGE,
+  SUBSCRIPTION_SUSPENDED_MESSAGE,
 } from "./tenantEntitlement";
 
+const PLAN_NAME_PATTERN = /free|trial|pro|plan/i;
+
 describe("evaluateTenantEntitlement", () => {
-  it("blocks suspended tenants before quota checks", () => {
+  it("blocks suspended tenants before expired and quota checks", () => {
     expect(
       evaluateTenantEntitlement({
         plan: "pro",
@@ -19,11 +21,12 @@ describe("evaluateTenantEntitlement", () => {
     ).toEqual({
       ok: false,
       code: "TENANT_SUSPENDED",
-      message: "Tenant is suspended.",
+      message: SUBSCRIPTION_SUSPENDED_MESSAGE,
     });
+    expect(SUBSCRIPTION_SUSPENDED_MESSAGE).not.toMatch(PLAN_NAME_PATTERN);
   });
 
-  it("blocks legacy free plan before quota check", () => {
+  it("blocks legacy free plan before quota allocation check without exposing plan name", () => {
     expect(
       evaluateTenantEntitlement({
         plan: "free",
@@ -34,11 +37,12 @@ describe("evaluateTenantEntitlement", () => {
     ).toEqual({
       ok: false,
       code: "TRIAL_EXPIRED",
-      message: FREE_PLAN_CHAT_BLOCKED_MESSAGE,
+      message: SUBSCRIPTION_EXPIRED_MESSAGE,
     });
+    expect(SUBSCRIPTION_EXPIRED_MESSAGE).not.toMatch(PLAN_NAME_PATTERN);
   });
 
-  it("blocks expired status before quota check", () => {
+  it("blocks expired status before quota allocation check", () => {
     expect(
       evaluateTenantEntitlement({
         plan: "pro",
@@ -49,11 +53,11 @@ describe("evaluateTenantEntitlement", () => {
     ).toEqual({
       ok: false,
       code: "TRIAL_EXPIRED",
-      message: FREE_PLAN_CHAT_BLOCKED_MESSAGE,
+      message: SUBSCRIPTION_EXPIRED_MESSAGE,
     });
   });
 
-  it("blocks zero monthly message limit when status is still active (partner quota exhausted)", () => {
+  it("blocks zero monthly_message_limit from Mindbloom sync quota=0 when status is active", () => {
     expect(
       evaluateTenantEntitlement({
         plan: "trial",
@@ -64,26 +68,26 @@ describe("evaluateTenantEntitlement", () => {
     ).toEqual({
       ok: false,
       code: "TENANT_SUSPENDED",
-      message: NO_QUOTA_CHAT_BLOCKED_MESSAGE,
+      message: NO_QUOTA_ALLOCATION_MESSAGE,
     });
   });
 
-  it("blocks suspended status before quota message", () => {
+  it("blocks partner free tier via suspended check before zero limit", () => {
     expect(
       evaluateTenantEntitlement({
         plan: "trial",
         status: "suspended",
-        monthly_message_limit: 30_000,
+        monthly_message_limit: 0,
         trial_ends_at: null,
       }),
     ).toEqual({
       ok: false,
       code: "TENANT_SUSPENDED",
-      message: "Tenant is suspended.",
+      message: SUBSCRIPTION_SUSPENDED_MESSAGE,
     });
   });
 
-  it("blocks legacy expired trial by date", () => {
+  it("blocks legacy expired trial by date without exposing plan name", () => {
     expect(
       evaluateTenantEntitlement(
         {
@@ -97,7 +101,7 @@ describe("evaluateTenantEntitlement", () => {
     ).toEqual({
       ok: false,
       code: "TRIAL_EXPIRED",
-      message: TRIAL_EXPIRED_CHAT_BLOCKED_MESSAGE,
+      message: SUBSCRIPTION_EXPIRED_MESSAGE,
     });
   });
 

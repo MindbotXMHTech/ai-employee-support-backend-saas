@@ -692,12 +692,17 @@ Trial defaults:
 
 When an active trial tenant reaches `trial_ends_at`, the scheduled `/api/jobs/expire-trials` job changes the tenant plan to `free`, sets `status = "expired"`, writes an audit log, and sends the updated `plan` to the Mindbloom company mirror when provisioning env vars are configured. The chat availability check also performs the same downgrade for that tenant if a scheduler is late.
 
-Chat blocks tenants with `monthly_message_limit <= 0` at the availability layer (`TENANT_SUSPENDED`, `success: false`) before quota counting or OpenAI. Mindbloom pushes quota via partner sync; SaaS does not downgrade partner tenants on trial expiry.
+Chat blocks tenants with `monthly_message_limit <= 0` at the availability layer (`TRIAL_EXPIRED`, `success: false`, HTTP 400) before quota counting or OpenAI. Mindbloom pushes quota via partner sync; SaaS does not downgrade partner tenants on trial expiry.
+
+Employee-facing chat messages do not expose plan names. Two outcomes only:
+
+- **Subscription expired / inactive** (free tier after sync, expired status, zero allocation, suspended): Thai message `SUBSCRIPTION_EXPIRED_MESSAGE` in [`src/lib/domain/tenantEntitlement.ts`](src/lib/domain/tenantEntitlement.ts), HTTP 400 on `/api/v1/chat` and `/api/v2/chat`.
+- **Usage quota exhausted** (active subscription, limit > 0, messages used up): `QUOTA_EXCEEDED_REPLY` in [`src/lib/services/quotaService.ts`](src/lib/services/quotaService.ts), HTTP 200 with `message_type: "quota_exceeded"`.
 
 Free defaults:
 
-- Chat not available (`plan = "free"` is hard-blocked at availability)
-- 500 messages (stored limit; not used for chat while plan is free)
+- Chat not available (blocked at availability with subscription-expired message; partner free tier syncs `quota=0`)
+- 500 messages (stored limit in Mindbloom; not used for chat while inactive on SaaS)
 - 10 files
 - 50 MB storage
 
