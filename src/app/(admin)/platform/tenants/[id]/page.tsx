@@ -40,8 +40,9 @@ export default async function TenantManagementDetailPage({ params }: { params: P
       <PlatformTenantNav tenantId={id} active="overview" />
 
       <div className="mb-6 flex flex-wrap gap-2">
-        <Badge>{data.tenant.plan}</Badge>
-        <Badge variant={data.tenant.status === "active" ? "success" : "warning"}>{data.tenant.status}</Badge>
+        <Badge variant={data.tenant.monthly_message_limit > 0 ? "success" : "warning"}>
+          {data.tenant.monthly_message_limit > 0 ? "Has quota" : "No quota"}
+        </Badge>
         <Badge variant="secondary">{data.tenant.slug}</Badge>
       </div>
 

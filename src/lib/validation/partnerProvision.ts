@@ -8,11 +8,11 @@ const companyCodeField = z
   .regex(/^[A-Za-z0-9]+$/, "company_code must be alphanumeric (A-Z, a-z, 0-9)")
   .transform((s) => s.toUpperCase());
 
-/** Partner API: SaaS onboarding with caller-supplied company code (central bot registration still uses LINE + code). */
+/** Partner API: SaaS runtime tenant with caller-supplied company code and quota from Mindbloom. */
 export const partnerProvisionTenantSchema = z.object({
   company_code: companyCodeField,
   name: z.string().trim().min(1, "name is required"),
-  plan: z.enum(["trial", "pro"]),
+  quota: z.coerce.number().int().min(0).max(1_000_000),
   industry: z.string().optional(),
   company_description: z.string().optional(),
   hr_contact_name: z.string().optional(),
@@ -23,13 +23,22 @@ export const partnerProvisionTenantSchema = z.object({
 
 export type PartnerProvisionTenantInput = z.infer<typeof partnerProvisionTenantSchema>;
 
+/** Quota-only sync from Mindbloom — plan/status are not part of the SaaS contract. */
 export const partnerTenantPlanSyncSchema = z.object({
   company_code: companyCodeField,
-  plan: z.enum(["free", "trial", "pro"]),
-  status: z.enum(["active", "suspended", "expired"]),
+  quota: z.coerce.number().int().min(0).max(1_000_000),
   event_id: z.string().trim().min(1, "event_id is required").max(200),
   occurred_at: z.string().datetime().optional(),
   updated_by: z.string().trim().max(200).optional(),
 });
 
 export type PartnerTenantPlanSyncInput = z.infer<typeof partnerTenantPlanSyncSchema>;
+
+/** Compensating revoke when Mindbloom local upsert fails after partner create (OWASP-04). */
+export const partnerRevokeTenantSchema = z.object({
+  company_code: companyCodeField,
+  event_id: z.string().trim().min(1).max(200).optional(),
+  reason: z.string().trim().max(200).optional(),
+});
+
+export type PartnerRevokeTenantInput = z.infer<typeof partnerRevokeTenantSchema>;

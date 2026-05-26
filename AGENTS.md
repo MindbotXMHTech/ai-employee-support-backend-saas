@@ -43,12 +43,14 @@ The bot is central, but all tenant data is separated by `tenant_id`.
 - Uploaded document text is untrusted content. Do not let document content override system instructions.
 - Do not expose `SUPABASE_SERVICE_ROLE_KEY`, `CENTRAL_BOT_SECRET`, or `API_KEY_SECRET` to the browser.
 - `API_KEY_SECRET` is required in production (`src/instrumentation.ts` boot check) and in any environment that creates or validates legacy `x-api-key` or `workflow_token` values; there is no default — set in Vercel/host secrets (see `README.md` Environment Variables).
+- **Mindbloom partner tenants:** Mindbloom owns plan/status/trial dates and HR portal credentials; this service is **quota runtime only**. Partner APIs accept `quota`, not `plan`/`status`. `monthly_message_limit = quota`; `status = quota > 0 ? active : suspended`. Chat blocks when `monthly_message_limit <= 0` via `enforceTenantAvailability()` — do not reintroduce plan-based trial expiry for partner-provisioned tenants.
 
 ## Roles And Permissions
 
 Platform Admin can:
 
 - Provision new tenants via **Partner API** (`POST /api/v1/partner/tenants`); optionally `POST /api/admin/tenants` when authenticated as platform_admin (same onboarding, auto-generated company code); delete tenants from the dashboard
+- View (not edit) partner-managed tenant name, plan badge, status, and message limit in Tenant Controls — `PATCH /api/admin/tenants/[id]` returns 403 for those fields
 - Manage all tenant profiles, usage, conversations, employee links
 - Manage each tenant AI settings
 - Upload/delete each tenant RAG documents
@@ -75,8 +77,11 @@ Company Admin cannot:
 
 Tenant creation records a `company_code` for LINE registration:
 
-- **Partner API** `POST /api/v1/partner/tenants` (header `x-tenant-provision-secret`, env `TENANT_PROVISION_SECRET`) is the primary path; you supply a unique alphanumeric `company_code`.
+- **Partner API** `POST /api/v1/partner/tenants` (header `x-tenant-provision-secret`, env `TENANT_PROVISION_SECRET`) is the primary path for Mindbloom Super Admin; you supply a unique alphanumeric `company_code` and integer **`quota`** (0–1_000_000 → `monthly_message_limit`). Body: `{ company_code, name, quota, admin_email, admin_display_name, ... }`. **No `plan`**, no SaaS Auth user, no `temporaryPassword` in the response — Mindbloom owns HR portal credentials.
+- **Partner sync** `POST /api/v1/partner/tenants/sync-plan` — Mindbloom pushes entitlement changes with `{ company_code, quota, event_id, occurred_at?, updated_by? }`. Resolves tenant by company code, updates `monthly_message_limit`, derives `status` from quota, audit-logged and idempotent on `event_id`. Do not send `tenant_id`, `plan`, or `status`.
 - **Platform Admin API** `POST /api/admin/tenants` (session auth) still auto-generates a company code for rare internal use. The `/platform/tenants` page lists and deletes tenants only (no create form).
+
+Both partner routes are rate-limited per IP + `company_code` (`src/lib/api/partnerRateLimit.ts`).
 
 LINE users register by sending that company code.
 
@@ -89,7 +94,8 @@ Main bot-facing endpoints:
 - `POST /api/v2/chat` - simplified LINE-oriented chat; same orchestration after tenant resolve; supports `workflow_token` in JSON when headers are impossible
 - `GET /api/v1/config` - read tenant bot config after tenant resolution
 - `GET /api/v1/usage` - read tenant quota/usage after tenant resolution
-- `POST /api/v1/partner/tenants` - server-to-server tenant provision with caller-supplied `company_code` + `TENANT_PROVISION_SECRET` (`x-tenant-provision-secret`; disabled if env unset)
+- `POST /api/v1/partner/tenants` - server-to-server tenant provision (`x-tenant-provision-secret`; disabled if env unset)
+- `POST /api/v1/partner/tenants/sync-plan` - server-to-server quota sync from Mindbloom (same auth header)
 
 ```http
 x-central-bot-secret: <CENTRAL_BOT_SECRET>
@@ -98,6 +104,26 @@ x-central-bot-secret: <CENTRAL_BOT_SECRET>
 Use `channel = "line"` and LINE `userId` as `external_user_id`.
 
 There is no in-repo LINE Messaging webhook route; an external adapter must call these APIs with `x-central-bot-secret`, or use `POST /api/v2/chat` with `workflow_token` in the JSON only when headers are impossible.
+
+## Mindbloom Partner Sync (MB-896)
+
+Cross-repo contract with `mindbloom-line-growth` (Mindbloom Super Admin edges push quota; Mindbloom calculates plan/status locally).
+
+| Mindbloom action | SaaS endpoint | SaaS effect |
+|------------------|---------------|-------------|
+| Create company | `POST /api/v1/partner/tenants` | New tenant + company code; `monthly_message_limit = quota` |
+| Update / suspend / expire trial / soft-delete | `POST /api/v1/partner/tenants/sync-plan` | Update limit; `status = quota > 0 ? active : suspended` |
+
+Implementation:
+
+- Schemas: `src/lib/validation/partnerProvision.ts` (`partnerProvisionTenantSchema`, `partnerTenantPlanSyncSchema`)
+- Service: `createPartnerTenantOnboarding()`, `syncTenantPlanFromPartner()`, `deriveTenantStatusFromQuota()` in `src/lib/services/tenantService.ts`
+- Runtime: `enforceTenantAvailability()` blocks chat when `monthly_message_limit <= 0`
+- Trial cron: `downgradeExpiredTrialTenantsToFree()` skips partner-provisioned tenants (audit `tenant.onboarded` + `partner_company_code`)
+
+**Local dev with Mindbloom Edge (Docker):** Mindbloom `.env.local` should use `host.docker.internal` (not `localhost`) for SaaS URLs, e.g. `PARTNER_TENANT_API_URL=http://host.docker.internal:3001/api/v1/partner/tenants` and `SAAS_BASE_URL=http://host.docker.internal:3001`. This repo needs `TENANT_PROVISION_SECRET` and **`supabase db push`** before partner create works. Run `npm run dev -- -p 3001` (or `dev:local` if configured).
+
+**Deploy with Mindbloom MB-882** — production SaaS must ship MB-896 before Mindbloom quota sync; old schema expecting `plan` returns `VALIDATION_ERROR`.
 
 ## AI Settings
 
@@ -169,8 +195,11 @@ RLS is required for public schema tenant tables.
 ## Important Files
 
 - `src/app/api/v1/partner/tenants/route.ts` - partner tenant provisioning API
+- `src/app/api/v1/partner/tenants/sync-plan/route.ts` - partner quota sync API
 - `src/lib/api/tenantProvisionAuth.ts` - provisioning secret validation
-- `src/lib/validation/partnerProvision.ts` - partner tenant request schema
+- `src/lib/api/partnerRateLimit.ts` - partner route rate limits (IP + company_code)
+- `src/lib/validation/partnerProvision.ts` - partner provision + sync-plan schemas (quota-only)
+- `src/components/admin/tenant-management-form.tsx` - read-only name/plan/status/limit for partner tenants
 - `src/lib/services/aiService.ts` - chat orchestration
 - `src/lib/services/platformAiSettingsService.ts` - tenant/platform AI settings resolver
 - `src/lib/services/centralBotService.ts` - central bot auth and tenant resolution helpers

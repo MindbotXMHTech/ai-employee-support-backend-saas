@@ -8,8 +8,7 @@ describe("POST /api/v1/partner/tenants/sync-plan", () => {
   const headerName = "x-tenant-provision-secret";
   const payload = {
     company_code: "xaz342wg",
-    plan: "pro",
-    status: "active",
+    quota: 30_000,
     event_id: "liff-company-updated-001",
     occurred_at: "2026-05-20T08:00:00.000Z",
     updated_by: "line-liff-super-admin",
@@ -60,7 +59,7 @@ describe("POST /api/v1/partner/tenants/sync-plan", () => {
     const res = await POST(
       jsonRequest(
         "http://localhost/api/v1/partner/tenants/sync-plan",
-        { company_code: "XAZ342WG", plan: "enterprise", status: "active", event_id: "evt-1" },
+        { company_code: "XAZ342WG", quota: -1, event_id: "evt-1" },
         { [headerName]: secret },
       ),
     );
@@ -88,10 +87,10 @@ describe("POST /api/v1/partner/tenants/sync-plan", () => {
     });
   });
 
-  it("syncs plan/status by normalized company code", async () => {
+  it("syncs quota by normalized company code", async () => {
     vi.doMock("@/lib/services/tenantService", () => ({ syncTenantPlanFromPartner }));
     syncTenantPlanFromPartner.mockResolvedValue({
-      tenant: { id: "tenant-id", plan: "pro", status: "active" },
+      tenant: { id: "tenant-id", monthly_message_limit: 30_000, status: "active" },
       companyCode: { code: "XAZ342WG" },
       idempotent: false,
     });
@@ -109,7 +108,7 @@ describe("POST /api/v1/partner/tenants/sync-plan", () => {
     await expect(res.json()).resolves.toEqual({
       success: true,
       idempotent: false,
-      tenant: { id: "tenant-id", plan: "pro", status: "active" },
+      tenant: { id: "tenant-id", monthly_message_limit: 30_000, status: "active" },
       company_code: "XAZ342WG",
     });
   });
@@ -117,7 +116,7 @@ describe("POST /api/v1/partner/tenants/sync-plan", () => {
   it("returns idempotent success for retried partner events", async () => {
     vi.doMock("@/lib/services/tenantService", () => ({ syncTenantPlanFromPartner }));
     syncTenantPlanFromPartner.mockResolvedValue({
-      tenant: { id: "tenant-id", plan: "pro", status: "active" },
+      tenant: { id: "tenant-id", monthly_message_limit: 0, status: "suspended" },
       companyCode: { code: "XAZ342WG" },
       idempotent: true,
     });

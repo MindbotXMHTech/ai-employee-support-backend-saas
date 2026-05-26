@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { jsonRequest } from "@/test/mockNextRequest";
 
-const createTenantOnboarding = vi.hoisted(() => vi.fn());
+const createPartnerTenantOnboarding = vi.hoisted(() => vi.fn());
 
 describe("POST /api/v1/partner/tenants", () => {
   const secret = "partner-provision-secret-value-32b!!";
@@ -16,37 +16,37 @@ describe("POST /api/v1/partner/tenants", () => {
     vi.resetModules();
     vi.unstubAllEnvs();
     vi.doUnmock("@/lib/services/tenantService");
-    createTenantOnboarding.mockReset();
+    createPartnerTenantOnboarding.mockReset();
   });
 
   it("returns 503 when TENANT_PROVISION_SECRET is not configured", async () => {
     vi.unstubAllEnvs();
     vi.resetModules();
-    vi.doMock("@/lib/services/tenantService", () => ({ createTenantOnboarding }));
+    vi.doMock("@/lib/services/tenantService", () => ({ createPartnerTenantOnboarding }));
 
     const { POST } = await import("./route");
     const res = await POST(
       jsonRequest("http://localhost/api/v1/partner/tenants", {
         company_code: "ACME01",
         name: "Acme",
-        plan: "trial",
+        quota: 500,
         admin_email: "a@ex.com",
         admin_display_name: "Admin",
       }),
     );
     expect(res.status).toBe(503);
-    expect(createTenantOnboarding).not.toHaveBeenCalled();
+    expect(createPartnerTenantOnboarding).not.toHaveBeenCalled();
   });
 
   it("returns 401 when secret header is missing or wrong", async () => {
-    vi.doMock("@/lib/services/tenantService", () => ({ createTenantOnboarding }));
+    vi.doMock("@/lib/services/tenantService", () => ({ createPartnerTenantOnboarding }));
 
     const { POST } = await import("./route");
     const bad = await POST(
       jsonRequest("http://localhost/api/v1/partner/tenants", {
         company_code: "ACME01",
         name: "Acme",
-        plan: "trial",
+        quota: 500,
         admin_email: "a@ex.com",
         admin_display_name: "Admin",
       }),
@@ -59,7 +59,7 @@ describe("POST /api/v1/partner/tenants", () => {
         {
           company_code: "ACME01",
           name: "Acme",
-          plan: "trial",
+          quota: 500,
           admin_email: "a@ex.com",
           admin_display_name: "Admin",
         },
@@ -67,28 +67,28 @@ describe("POST /api/v1/partner/tenants", () => {
       ),
     );
     expect(bad2.status).toBe(401);
-    expect(createTenantOnboarding).not.toHaveBeenCalled();
+    expect(createPartnerTenantOnboarding).not.toHaveBeenCalled();
   });
 
   it("returns 400 for invalid payload", async () => {
-    vi.doMock("@/lib/services/tenantService", () => ({ createTenantOnboarding }));
+    vi.doMock("@/lib/services/tenantService", () => ({ createPartnerTenantOnboarding }));
 
     const { POST } = await import("./route");
     const res = await POST(
       jsonRequest(
         "http://localhost/api/v1/partner/tenants",
-        { name: "x", plan: "trial", admin_email: "a@b.com", admin_display_name: "A" },
+        { name: "x", quota: 500, admin_email: "a@b.com", admin_display_name: "A" },
         { [headerName]: secret },
       ),
     );
     expect(res.status).toBe(400);
-    expect(createTenantOnboarding).not.toHaveBeenCalled();
+    expect(createPartnerTenantOnboarding).not.toHaveBeenCalled();
   });
 
   it("returns 409 when company code is taken", async () => {
-    vi.doMock("@/lib/services/tenantService", () => ({ createTenantOnboarding }));
+    vi.doMock("@/lib/services/tenantService", () => ({ createPartnerTenantOnboarding }));
     const { CompanyCodeTakenError } = await import("@/lib/services/companyCodeService");
-    createTenantOnboarding.mockRejectedValue(new CompanyCodeTakenError());
+    createPartnerTenantOnboarding.mockRejectedValue(new CompanyCodeTakenError());
 
     const { POST } = await import("./route");
     const res = await POST(
@@ -97,7 +97,7 @@ describe("POST /api/v1/partner/tenants", () => {
         {
           company_code: "TAKEN1",
           name: "Co",
-          plan: "trial",
+          quota: 500,
           admin_email: "a@ex.com",
           admin_display_name: "Admin",
         },
@@ -107,40 +107,13 @@ describe("POST /api/v1/partner/tenants", () => {
     expect(res.status).toBe(409);
   });
 
-  it("returns 409 when admin email is already registered", async () => {
-    vi.doMock("@/lib/services/tenantService", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("@/lib/services/tenantService")>();
-      return { ...actual, createTenantOnboarding };
-    });
-    const { AdminEmailTakenError } = await import("@/lib/services/tenantService");
-    createTenantOnboarding.mockRejectedValue(new AdminEmailTakenError());
-
-    const { POST } = await import("./route");
-    const res = await POST(
-      jsonRequest(
-        "http://localhost/api/v1/partner/tenants",
-        {
-          company_code: "NEW01",
-          name: "Co",
-          plan: "trial",
-          admin_email: "taken@ex.com",
-          admin_display_name: "Admin",
-        },
-        { [headerName]: secret },
-      ),
-    );
-    expect(res.status).toBe(409);
-    const body = await res.json();
-    expect(body.error.code).toBe("ADMIN_EMAIL_TAKEN");
-  });
-
-  it("returns 200 with onboarding payload when provision succeeds", async () => {
-    vi.doMock("@/lib/services/tenantService", () => ({ createTenantOnboarding }));
-    createTenantOnboarding.mockResolvedValue({
-      tenant: { id: "t1", name: "Co" },
-      adminUser: { id: "u1", email: "a@ex.com" },
+  it("returns 200 with runtime tenant payload when provision succeeds", async () => {
+    vi.doMock("@/lib/services/tenantService", () => ({ createPartnerTenantOnboarding }));
+    createPartnerTenantOnboarding.mockResolvedValue({
+      tenant: { id: "t1", name: "Co", monthly_message_limit: 500, status: "active" },
       companyCode: { code: "ACME99" },
-      temporaryPassword: "tmp",
+      admin_email: "a@ex.com",
+      admin_display_name: "Admin",
     });
 
     const { POST } = await import("./route");
@@ -150,7 +123,7 @@ describe("POST /api/v1/partner/tenants", () => {
         {
           company_code: "ACME99",
           name: "Co",
-          plan: "trial",
+          quota: 500,
           admin_email: "a@ex.com",
           admin_display_name: "Admin",
         },
@@ -160,10 +133,12 @@ describe("POST /api/v1/partner/tenants", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.provisioned_company_code).toBe("ACME99");
-    expect(body.temporaryPassword).toBe("tmp");
-    expect(createTenantOnboarding).toHaveBeenCalledWith(
+    expect(body.quota).toBe(500);
+    expect(body.temporaryPassword).toBeUndefined();
+    expect(createPartnerTenantOnboarding).toHaveBeenCalledWith(
       expect.objectContaining({
         company_code: "ACME99",
+        quota: 500,
         created_by: null,
       }),
     );

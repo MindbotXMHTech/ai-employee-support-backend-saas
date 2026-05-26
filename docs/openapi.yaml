@@ -370,11 +370,11 @@ paths:
   /api/v1/partner/tenants/sync-plan:
     post:
       tags: [Partner API]
-      summary: Sync tenant plan/status from LINE LIFF
+      summary: Sync tenant quota from Mindbloom
       description: |
-        Server-to-server endpoint for the LINE LIFF company system to push subscription
-        changes into this SaaS runtime database. The shared identity is `company_code`;
-        external clients must not send or choose `tenant_id`.
+        Server-to-server endpoint for Mindbloom to push quota changes into this SaaS runtime database.
+        The shared identity is `company_code`; external clients must not send or choose `tenant_id`.
+        SaaS derives `status` from quota (`>0` active, `0` suspended). Do not send plan or status.
 
         Requires `TENANT_PROVISION_SECRET` on the server and matching
         `x-tenant-provision-secret`. `event_id` is required so callers can safely retry.
@@ -1253,7 +1253,7 @@ components:
 
     PartnerProvisionTenantRequest:
       type: object
-      required: [company_code, name, plan, admin_email, admin_display_name]
+      required: [company_code, name, quota, admin_email, admin_display_name]
       properties:
         company_code:
           type: string
@@ -1264,9 +1264,11 @@ components:
         name:
           type: string
           description: Tenant display name / company name seed.
-        plan:
-          type: string
-          enum: [trial, pro]
+        quota:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+          description: Mindbloom-computed monthly message limit pushed to SaaS runtime.
         industry:
           type: string
         company_description:
@@ -1283,18 +1285,27 @@ components:
           type: string
 
     PartnerProvisionTenantResponse:
-      allOf:
-        - $ref: "#/components/schemas/CreateTenantResponse"
-        - type: object
-          required: [provisioned_company_code]
-          properties:
-            provisioned_company_code:
-              type: string
-              description: Echo of persisted company_code (normalized).
+      type: object
+      required: [tenant, companyCode, provisioned_company_code, quota]
+      properties:
+        tenant:
+          $ref: "#/components/schemas/Tenant"
+        companyCode:
+          type: object
+        admin_email:
+          type: string
+          format: email
+        admin_display_name:
+          type: string
+        provisioned_company_code:
+          type: string
+          description: Echo of persisted company_code (normalized).
+        quota:
+          type: integer
 
     PartnerTenantPlanSyncRequest:
       type: object
-      required: [company_code, plan, status, event_id]
+      required: [company_code, quota, event_id]
       properties:
         company_code:
           type: string
@@ -1302,15 +1313,14 @@ components:
           minLength: 4
           maxLength: 64
           pattern: "^[A-Za-z0-9]+$"
-        plan:
-          type: string
-          enum: [free, trial, pro]
-        status:
-          type: string
-          enum: [active, suspended, expired]
+        quota:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+          description: Mindbloom-computed monthly message limit; status derived as quota>0 active else suspended.
         event_id:
           type: string
-          description: Unique LIFF event id for retry-safe idempotency.
+          description: Unique Mindbloom event id for retry-safe idempotency.
         occurred_at:
           type: string
           format: date-time

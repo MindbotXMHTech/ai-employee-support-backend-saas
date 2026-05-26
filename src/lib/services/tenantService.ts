@@ -1,7 +1,7 @@
 import { isAuthError } from "@supabase/supabase-js";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { env } from "@/lib/env";
-import type { Tenant, TenantPlan, TenantStatus } from "@/lib/types";
+import type { Tenant } from "@/lib/types";
 import crypto from "node:crypto";
 import {
   ensureCompanyCodeForTenant,
@@ -11,6 +11,23 @@ import {
 } from "@/lib/services/companyCodeService";
 import { pushMindbloomCompanyProvision } from "@/lib/services/mindbloomProvisionService";
 import { getPlatformAiSettings } from "@/lib/services/platformAiSettingsService";
+import {
+  buildPartnerOnboardAuditMetadata,
+  buildPartnerPlanSyncAuditMetadata,
+  buildPartnerQuotaTenantUpdate,
+  buildPartnerRevokeAuditMetadata,
+  buildPartnerTenantInsertRow,
+  deriveTenantStatusFromQuota,
+  normalizePartnerAdminEmail,
+  normalizePartnerCompanyCode,
+} from "@/lib/domain/partnerTenantLogic";
+import {
+  evaluateTenantEntitlement,
+  type TenantAvailabilityResult,
+} from "@/lib/domain/tenantEntitlement";
+
+export { deriveTenantStatusFromQuota, evaluateTenantEntitlement };
+export type { TenantAvailabilityResult };
 
 /** Admin email already used by another dashboard user (Auth or `public.users`). */
 export class AdminEmailTakenError extends Error {
@@ -28,6 +45,15 @@ export class TenantCompanyCodeNotFoundError extends Error {
   constructor(message = "Invalid or revoked company code.") {
     super(message);
     this.name = "TenantCompanyCodeNotFoundError";
+  }
+}
+
+export class PartnerTenantRevokeForbiddenError extends Error {
+  readonly code = "PARTNER_REVOKE_FORBIDDEN";
+
+  constructor(message = "Tenant was not partner-provisioned and cannot be revoked via partner API.") {
+    super(message);
+    this.name = "PartnerTenantRevokeForbiddenError";
   }
 }
 
@@ -63,6 +89,20 @@ export function planDefaults(plan: "free" | "trial" | "pro") {
   };
 }
 
+async function tenantWasPartnerProvisioned(tenantId: string): Promise<boolean> {
+  const supabase = createSupabaseServiceClient();
+  const { data, error } = await supabase
+    .from("audit_logs")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("action", "tenant.onboarded")
+    .not("metadata->partner_company_code", "is", null)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data);
+}
+
 export async function getTenant(tenantId: string) {
   const supabase = createSupabaseServiceClient();
   const { data, error } = await supabase
@@ -75,6 +115,10 @@ export async function getTenant(tenantId: string) {
 }
 
 async function pushTenantPlanMirror(tenant: Tenant) {
+  if (await tenantWasPartnerProvisioned(tenant.id)) {
+    return false;
+  }
+
   const supabase = createSupabaseServiceClient();
   const { data: companyCode, error } = await supabase
     .from("tenant_company_codes")
@@ -113,6 +157,13 @@ export async function downgradeTrialTenantToFree(input: {
 
   if (tenantError) throw tenantError;
   if (!tenant) return { ok: false as const, code: "NOT_FOUND" as const };
+  if (await tenantWasPartnerProvisioned(input.tenantId)) {
+    return {
+      ok: false as const,
+      code: "PARTNER_MANAGED" as const,
+      tenant: tenant as Tenant,
+    };
+  }
   if (tenant.plan !== "trial") {
     return {
       ok: false as const,
@@ -130,7 +181,7 @@ export async function downgradeTrialTenantToFree(input: {
 
   const { data: updated, error: updateError } = await supabase
     .from("tenants")
-    .update({ plan: "free", status: "expired" })
+    .update({ plan: "free", status: "expired", monthly_message_limit: 0 })
     .eq("id", input.tenantId)
     .eq("plan", "trial")
     .select("*")
@@ -178,6 +229,9 @@ export async function downgradeExpiredTrialTenantsToFree(
 
   const results = [];
   for (const tenant of tenants ?? []) {
+    if (await tenantWasPartnerProvisioned(tenant.id as string)) {
+      continue;
+    }
     results.push(
       await downgradeTrialTenantToFree({
         tenantId: tenant.id as string,
@@ -198,14 +252,13 @@ export async function downgradeExpiredTrialTenantsToFree(
 
 export async function syncTenantPlanFromPartner(input: {
   company_code: string;
-  plan: TenantPlan;
-  status: TenantStatus;
+  quota: number;
   event_id: string;
   occurred_at?: string;
   updated_by?: string;
 }) {
   const supabase = createSupabaseServiceClient();
-  const normalizedCode = input.company_code.trim().toUpperCase();
+  const normalizedCode = normalizePartnerCompanyCode(input.company_code);
 
   const { data: companyCode, error: codeError } = await supabase
     .from("tenant_company_codes")
@@ -235,9 +288,10 @@ export async function syncTenantPlanFromPartner(input: {
     };
   }
 
+  const quotaUpdate = buildPartnerQuotaTenantUpdate(input.quota);
   const { data: updatedTenant, error: updateError } = await supabase
     .from("tenants")
-    .update({ plan: input.plan, status: input.status })
+    .update(quotaUpdate)
     .eq("id", companyCode.tenant_id)
     .select("*")
     .single();
@@ -249,17 +303,16 @@ export async function syncTenantPlanFromPartner(input: {
     action: "tenant.plan_synced_from_partner",
     target_type: "tenant",
     target_id: companyCode.tenant_id,
-    metadata: {
-      event_id: input.event_id,
-      company_code: normalizedCode,
-      previous_plan: tenant?.plan ?? null,
-      previous_status: tenant?.status ?? null,
-      plan: input.plan,
-      status: input.status,
-      occurred_at: input.occurred_at ?? null,
-      updated_by: input.updated_by ?? null,
-      source: "line_liff",
-    },
+    metadata: buildPartnerPlanSyncAuditMetadata({
+      eventId: input.event_id,
+      companyCode: normalizedCode,
+      quota: input.quota,
+      derivedStatus: quotaUpdate.status,
+      previousMonthlyMessageLimit: tenant?.monthly_message_limit ?? null,
+      previousStatus: tenant?.status ?? null,
+      occurredAt: input.occurred_at,
+      updatedBy: input.updated_by,
+    }),
   });
 
   return {
@@ -269,36 +322,8 @@ export async function syncTenantPlanFromPartner(input: {
   };
 }
 
-export async function enforceTenantAvailability(tenant: Tenant) {
-  if (tenant.status === "suspended") {
-    return {
-      ok: false as const,
-      code: "TENANT_SUSPENDED" as const,
-      message: "Tenant is suspended.",
-    };
-  }
-
-  if (
-    tenant.plan === "trial" &&
-    tenant.trial_ends_at &&
-    new Date(tenant.trial_ends_at) < new Date()
-  ) {
-    await downgradeTrialTenantToFree({
-      tenantId: tenant.id,
-      source: "chat_availability_check",
-    });
-    return { ok: true as const };
-  }
-
-  if (tenant.status === "expired" || tenant.plan === "free") {
-    return {
-      ok: false as const,
-      code: "TRIAL_EXPIRED" as const,
-      message: "Free plan is not available for chat.",
-    };
-  }
-
-  return { ok: true as const };
+export async function enforceTenantAvailability(tenant: Tenant): Promise<TenantAvailabilityResult> {
+  return evaluateTenantEntitlement(tenant);
 }
 
 export async function createTenant(input: {
@@ -351,6 +376,140 @@ export async function createTenant(input: {
   });
   await supabase.from("escalation_settings").insert({ tenant_id: data.id });
   return data as Tenant;
+}
+
+/** Partner provisioning from Mindbloom — runtime tenant only; no SaaS auth user or temp password. */
+export async function createPartnerTenantOnboarding(input: {
+  name: string;
+  quota: number;
+  industry?: string;
+  company_description?: string;
+  hr_contact_name?: string;
+  hr_contact_email?: string;
+  admin_email: string;
+  admin_display_name: string;
+  created_by?: string | null;
+  company_code: string;
+}) {
+  const supabase = createSupabaseServiceClient();
+  const adminEmail = normalizePartnerAdminEmail(input.admin_email);
+
+  const taken = await isCompanyCodeTaken(input.company_code);
+  if (taken) throw new CompanyCodeTakenError();
+
+  const slug = await generateUniqueTenantSlug(input.name);
+  const now = new Date();
+
+  const { data: tenant, error: tenantError } = await supabase
+    .from("tenants")
+    .insert(buildPartnerTenantInsertRow({ name: input.name, slug, quota: input.quota }))
+    .select("*")
+    .single();
+  if (tenantError) throw tenantError;
+
+  await supabase.from("tenant_profiles").insert({
+    tenant_id: tenant.id,
+    company_name: input.name,
+    industry: input.industry || null,
+    company_description: input.company_description || null,
+    hr_contact_name: input.hr_contact_name || null,
+    hr_contact_email: input.hr_contact_email || null,
+  });
+
+  const aiDefaults = await getPlatformAiSettings();
+  await supabase.from("bot_settings").insert({
+    tenant_id: tenant.id,
+    name: aiDefaults.name,
+    tone: aiDefaults.tone,
+    default_language: aiDefaults.default_language,
+    max_sentences: aiDefaults.max_sentences,
+    rag_enabled: aiDefaults.rag_enabled,
+    mental_health_enabled: aiDefaults.mental_health_enabled,
+    safety_enabled: aiDefaults.safety_enabled,
+    handoff_enabled: aiDefaults.handoff_enabled,
+    is_active: true,
+    general_model: aiDefaults.general_model,
+    rag_model: aiDefaults.rag_model,
+    safety_model: aiDefaults.safety_model,
+    embedding_model: aiDefaults.embedding_model,
+    classification_enabled: aiDefaults.classification_enabled,
+    system_instruction: aiDefaults.system_instruction,
+  });
+  await supabase.from("escalation_settings").insert({ tenant_id: tenant.id });
+
+  const companyCode = await insertCompanyCodeForTenant({
+    tenantId: tenant.id,
+    code: input.company_code,
+    createdBy: input.created_by,
+  });
+
+  await supabase.from("audit_logs").insert({
+    tenant_id: tenant.id,
+    action: "tenant.onboarded",
+    target_type: "tenant",
+    target_id: tenant.id,
+    metadata: buildPartnerOnboardAuditMetadata({
+      adminEmail,
+      adminDisplayName: input.admin_display_name,
+      slug,
+      companyCode: input.company_code,
+      quota: input.quota,
+      provisionedAt: now.toISOString(),
+    }),
+  });
+
+  return {
+    tenant: tenant as Tenant,
+    companyCode,
+    admin_email: adminEmail,
+    admin_display_name: input.admin_display_name,
+  };
+}
+
+/** Compensating delete for failed Mindbloom local mirror after partner create (OWASP-04). */
+export async function revokePartnerProvisionedTenantByCompanyCode(input: {
+  company_code: string;
+  event_id?: string;
+  reason?: string;
+}) {
+  const supabase = createSupabaseServiceClient();
+  const normalizedCode = normalizePartnerCompanyCode(input.company_code);
+
+  const { data: companyCode, error: codeError } = await supabase
+    .from("tenant_company_codes")
+    .select("id, tenant_id, code")
+    .eq("code", normalizedCode)
+    .maybeSingle();
+  if (codeError) throw codeError;
+
+  if (!companyCode?.tenant_id) {
+    return { ok: true as const, code: "NOT_FOUND" as const, idempotent: true, tenant_id: null };
+  }
+
+  if (!(await tenantWasPartnerProvisioned(companyCode.tenant_id))) {
+    throw new PartnerTenantRevokeForbiddenError();
+  }
+
+  const tenantId = companyCode.tenant_id as string;
+  const deleteResult = await deleteTenantById({ tenantId, actorUserId: null });
+  if (!deleteResult.ok && deleteResult.code === "NOT_FOUND") {
+    return { ok: true as const, code: "NOT_FOUND" as const, idempotent: true, tenant_id: tenantId };
+  }
+
+  await supabase.from("audit_logs").insert({
+    tenant_id: null,
+    actor_user_id: null,
+    action: "tenant.partner_provision_revoked",
+    target_type: "tenant",
+    target_id: tenantId,
+    metadata: buildPartnerRevokeAuditMetadata({
+      companyCode: normalizedCode,
+      eventId: input.event_id,
+      reason: input.reason,
+    }),
+  });
+
+  return { ok: true as const, code: "REVOKED" as const, idempotent: false, tenant_id: tenantId };
 }
 
 export function slugifyTenantName(name: string) {

@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkPartnerProvisionRateLimit } from "@/lib/api/partnerRateLimit";
 import { TENANT_PROVISION_SECRET_HEADER, validateTenantProvisionSecret } from "@/lib/api/tenantProvisionAuth";
 import { partnerProvisionTenantSchema } from "@/lib/validation/partnerProvision";
 import { env } from "@/lib/env";
 import { CompanyCodeTakenError } from "@/lib/services/companyCodeService";
-import { AdminEmailTakenError, createTenantOnboarding } from "@/lib/services/tenantService";
+import { createPartnerTenantOnboarding } from "@/lib/services/tenantService";
 
 /**
- * Partner / core-system provisioning: creates tenant + tenant admin + YOUR company_code.
- * Requires TENANT_PROVISION_SECRET and header x-tenant-provision-secret (timing-safe).
- * Alternative: authenticated POST /api/admin/tenants (platform_admin) auto-generates company_code; `/platform/tenants` has no create form.
+ * Partner / core-system provisioning: creates runtime tenant with caller-supplied company code + quota.
+ * Mindbloom owns plan/status/admin credentials — no SaaS auth user or temporaryPassword in response.
  */
 export async function POST(request: NextRequest) {
   if (!env.TENANT_PROVISION_SECRET?.trim()) {
@@ -49,26 +49,35 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const rateLimit = checkPartnerProvisionRateLimit({
+    ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? request.headers.get("x-real-ip"),
+    companyCode: parsed.data.company_code,
+  });
+  if (!rateLimit.ok) {
+    return NextResponse.json(
+      { error: { code: "RATE_LIMITED", message: "Too many provisioning requests." } },
+      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSec) } },
+    );
+  }
+
   try {
-    const result = await createTenantOnboarding({
+    const result = await createPartnerTenantOnboarding({
       ...parsed.data,
       hr_contact_email: parsed.data.hr_contact_email || undefined,
       created_by: null,
     });
 
-    const { tenant, adminUser, companyCode, temporaryPassword } = result;
+    const { tenant, companyCode, admin_email, admin_display_name } = result;
     return NextResponse.json({
       tenant,
-      adminUser,
       companyCode,
-      temporaryPassword,
+      admin_email,
+      admin_display_name,
       provisioned_company_code: companyCode.code,
+      quota: parsed.data.quota,
     });
   } catch (error) {
     if (error instanceof CompanyCodeTakenError) {
-      return NextResponse.json({ error: { code: error.code, message: error.message } }, { status: 409 });
-    }
-    if (error instanceof AdminEmailTakenError) {
       return NextResponse.json({ error: { code: error.code, message: error.message } }, { status: 409 });
     }
     console.error("partner_provision_tenant_error", error);
