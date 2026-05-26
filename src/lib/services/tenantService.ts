@@ -11,6 +11,23 @@ import {
 } from "@/lib/services/companyCodeService";
 import { pushMindbloomCompanyProvision } from "@/lib/services/mindbloomProvisionService";
 import { getPlatformAiSettings } from "@/lib/services/platformAiSettingsService";
+import {
+  buildPartnerOnboardAuditMetadata,
+  buildPartnerPlanSyncAuditMetadata,
+  buildPartnerQuotaTenantUpdate,
+  buildPartnerRevokeAuditMetadata,
+  buildPartnerTenantInsertRow,
+  deriveTenantStatusFromQuota,
+  normalizePartnerAdminEmail,
+  normalizePartnerCompanyCode,
+} from "@/lib/domain/partnerTenantLogic";
+import {
+  evaluateTenantEntitlement,
+  type TenantAvailabilityResult,
+} from "@/lib/domain/tenantEntitlement";
+
+export { deriveTenantStatusFromQuota, evaluateTenantEntitlement };
+export type { TenantAvailabilityResult };
 
 /** Admin email already used by another dashboard user (Auth or `public.users`). */
 export class AdminEmailTakenError extends Error {
@@ -71,17 +88,6 @@ export function planDefaults(plan: "free" | "trial" | "pro") {
     max_bots: 1,
   };
 }
-
-/** Runtime status derived from Mindbloom quota — SaaS does not store plan for partner tenants. */
-export function deriveTenantStatusFromQuota(quota: number): "active" | "suspended" {
-  return quota > 0 ? "active" : "suspended";
-}
-
-const PARTNER_TENANT_RESOURCE_DEFAULTS = {
-  storage_limit_mb: 50,
-  max_files: 10,
-  max_bots: 1,
-};
 
 async function tenantWasPartnerProvisioned(tenantId: string): Promise<boolean> {
   const supabase = createSupabaseServiceClient();
@@ -252,7 +258,7 @@ export async function syncTenantPlanFromPartner(input: {
   updated_by?: string;
 }) {
   const supabase = createSupabaseServiceClient();
-  const normalizedCode = input.company_code.trim().toUpperCase();
+  const normalizedCode = normalizePartnerCompanyCode(input.company_code);
 
   const { data: companyCode, error: codeError } = await supabase
     .from("tenant_company_codes")
@@ -282,13 +288,10 @@ export async function syncTenantPlanFromPartner(input: {
     };
   }
 
-  const derivedStatus = deriveTenantStatusFromQuota(input.quota);
+  const quotaUpdate = buildPartnerQuotaTenantUpdate(input.quota);
   const { data: updatedTenant, error: updateError } = await supabase
     .from("tenants")
-    .update({
-      monthly_message_limit: input.quota,
-      status: derivedStatus,
-    })
+    .update(quotaUpdate)
     .eq("id", companyCode.tenant_id)
     .select("*")
     .single();
@@ -300,17 +303,16 @@ export async function syncTenantPlanFromPartner(input: {
     action: "tenant.plan_synced_from_partner",
     target_type: "tenant",
     target_id: companyCode.tenant_id,
-    metadata: {
-      event_id: input.event_id,
-      company_code: normalizedCode,
-      previous_monthly_message_limit: tenant?.monthly_message_limit ?? null,
-      previous_status: tenant?.status ?? null,
+    metadata: buildPartnerPlanSyncAuditMetadata({
+      eventId: input.event_id,
+      companyCode: normalizedCode,
       quota: input.quota,
-      status: derivedStatus,
-      occurred_at: input.occurred_at ?? null,
-      updated_by: input.updated_by ?? null,
-      source: "mindbloom_partner_sync",
-    },
+      derivedStatus: quotaUpdate.status,
+      previousMonthlyMessageLimit: tenant?.monthly_message_limit ?? null,
+      previousStatus: tenant?.status ?? null,
+      occurredAt: input.occurred_at,
+      updatedBy: input.updated_by,
+    }),
   });
 
   return {
@@ -318,68 +320,6 @@ export async function syncTenantPlanFromPartner(input: {
     companyCode,
     idempotent: false,
   };
-}
-
-export type TenantAvailabilityResult =
-  | { ok: true; tenant: Tenant }
-  | {
-      ok: false;
-      code: "TENANT_SUSPENDED" | "TRIAL_EXPIRED";
-      message: string;
-    };
-
-const NO_QUOTA_CHAT_BLOCKED_MESSAGE = "Tenant has no message quota.";
-const FREE_PLAN_CHAT_BLOCKED_MESSAGE = "Free plan is not available for chat.";
-const TRIAL_EXPIRED_CHAT_BLOCKED_MESSAGE = "Trial period has expired.";
-
-type TenantEntitlementInput = Pick<
-  Tenant,
-  "plan" | "status" | "monthly_message_limit" | "trial_ends_at"
->;
-
-/** Pure entitlement check — legacy plan/status before quota so free/expired never bypass via stale limit. */
-export function evaluateTenantEntitlement(
-  tenant: TenantEntitlementInput,
-  now: Date = new Date(),
-): TenantAvailabilityResult {
-  if (tenant.status === "suspended") {
-    return {
-      ok: false as const,
-      code: "TENANT_SUSPENDED" as const,
-      message: "Tenant is suspended.",
-    };
-  }
-
-  // Legacy non-partner trial expiry (free + expired) — must run before quota check (OWASP-01).
-  if (tenant.status === "expired" || tenant.plan === "free") {
-    return {
-      ok: false as const,
-      code: "TRIAL_EXPIRED" as const,
-      message: FREE_PLAN_CHAT_BLOCKED_MESSAGE,
-    };
-  }
-
-  if ((tenant.monthly_message_limit ?? 0) <= 0) {
-    return {
-      ok: false as const,
-      code: "TENANT_SUSPENDED" as const,
-      message: NO_QUOTA_CHAT_BLOCKED_MESSAGE,
-    };
-  }
-
-  if (
-    tenant.plan === "trial" &&
-    tenant.trial_ends_at &&
-    new Date(tenant.trial_ends_at) <= now
-  ) {
-    return {
-      ok: false as const,
-      code: "TRIAL_EXPIRED" as const,
-      message: TRIAL_EXPIRED_CHAT_BLOCKED_MESSAGE,
-    };
-  }
-
-  return { ok: true as const, tenant: tenant as Tenant };
 }
 
 export async function enforceTenantAvailability(tenant: Tenant): Promise<TenantAvailabilityResult> {
@@ -452,27 +392,17 @@ export async function createPartnerTenantOnboarding(input: {
   company_code: string;
 }) {
   const supabase = createSupabaseServiceClient();
-  const adminEmail = input.admin_email.trim().toLowerCase();
+  const adminEmail = normalizePartnerAdminEmail(input.admin_email);
 
   const taken = await isCompanyCodeTaken(input.company_code);
   if (taken) throw new CompanyCodeTakenError();
 
   const slug = await generateUniqueTenantSlug(input.name);
-  const status = deriveTenantStatusFromQuota(input.quota);
   const now = new Date();
 
   const { data: tenant, error: tenantError } = await supabase
     .from("tenants")
-    .insert({
-      name: input.name,
-      slug,
-      plan: "trial",
-      status,
-      trial_started_at: null,
-      trial_ends_at: null,
-      monthly_message_limit: input.quota,
-      ...PARTNER_TENANT_RESOURCE_DEFAULTS,
-    })
+    .insert(buildPartnerTenantInsertRow({ name: input.name, slug, quota: input.quota }))
     .select("*")
     .single();
   if (tenantError) throw tenantError;
@@ -518,15 +448,14 @@ export async function createPartnerTenantOnboarding(input: {
     action: "tenant.onboarded",
     target_type: "tenant",
     target_id: tenant.id,
-    metadata: {
-      admin_email: adminEmail,
-      admin_display_name: input.admin_display_name,
+    metadata: buildPartnerOnboardAuditMetadata({
+      adminEmail,
+      adminDisplayName: input.admin_display_name,
       slug,
-      partner_company_code: input.company_code,
+      companyCode: input.company_code,
       quota: input.quota,
-      source: "mindbloom_partner",
-      provisioned_at: now.toISOString(),
-    },
+      provisionedAt: now.toISOString(),
+    }),
   });
 
   return {
@@ -544,7 +473,7 @@ export async function revokePartnerProvisionedTenantByCompanyCode(input: {
   reason?: string;
 }) {
   const supabase = createSupabaseServiceClient();
-  const normalizedCode = input.company_code.trim().toUpperCase();
+  const normalizedCode = normalizePartnerCompanyCode(input.company_code);
 
   const { data: companyCode, error: codeError } = await supabase
     .from("tenant_company_codes")
@@ -573,12 +502,11 @@ export async function revokePartnerProvisionedTenantByCompanyCode(input: {
     action: "tenant.partner_provision_revoked",
     target_type: "tenant",
     target_id: tenantId,
-    metadata: {
-      company_code: normalizedCode,
-      event_id: input.event_id ?? null,
-      reason: input.reason ?? "mindbloom_local_provision_failed",
-      source: "mindbloom_partner_compensate",
-    },
+    metadata: buildPartnerRevokeAuditMetadata({
+      companyCode: normalizedCode,
+      eventId: input.event_id,
+      reason: input.reason,
+    }),
   });
 
   return { ok: true as const, code: "REVOKED" as const, idempotent: false, tenant_id: tenantId };
