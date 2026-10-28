@@ -25,6 +25,7 @@ import {
   evaluateTenantEntitlement,
   type TenantAvailabilityResult,
 } from "@/lib/domain/tenantEntitlement";
+import { upsertQuota } from "@/lib/repositories/aiSessionQuotaRepository";
 
 export { deriveTenantStatusFromQuota, evaluateTenantEntitlement };
 export type { TenantAvailabilityResult };
@@ -406,6 +407,8 @@ export async function createPartnerTenantOnboarding(input: {
     .select("*")
     .single();
   if (tenantError) throw tenantError;
+
+  await upsertQuota(tenant.id);
 
   await supabase.from("tenant_profiles").insert({
     tenant_id: tenant.id,
