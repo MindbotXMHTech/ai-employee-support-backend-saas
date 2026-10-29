@@ -6,6 +6,12 @@ import {
   type AiSessionQuota,
   type AiSessionQuotaCounters,
 } from "@/lib/domain/aiSessionQuota";
+import {
+  PARTNER_AI_SESSION_OP_OUTCOMES,
+  type PartnerAiSessionOp,
+  type PartnerAiSessionOpOutcome,
+  type PartnerAiSessionOpResult,
+} from "@/lib/domain/partnerAiSession";
 
 const POSTGRES_INT_MAX = 2_147_483_647;
 
@@ -16,6 +22,7 @@ const RPC = {
   setBase: "set_ai_session_base",
   addTopup: "add_ai_session_topup",
   resetBase: "reset_ai_session_base",
+  applyPartnerOp: "apply_partner_ai_session_op",
 } as const;
 
 export async function getQuota(tenantId: string): Promise<AiSessionQuota | null> {
@@ -62,6 +69,31 @@ export async function resetBase(tenantId: string, baseLimit?: number): Promise<A
       ),
     ),
   );
+}
+
+export async function applyPartnerOp(input: {
+  companyCode: string;
+  op: PartnerAiSessionOp;
+  amount: number | null;
+  eventId: string;
+  occurredAt: string | null;
+  updatedBy: string | null;
+}): Promise<PartnerAiSessionOpResult> {
+  const row = recordOf(
+    onlyRow(
+      rowsOf(
+        await callRpc(RPC.applyPartnerOp, {
+          p_company_code: input.companyCode,
+          p_op: input.op,
+          p_amount: input.amount,
+          p_event_id: input.eventId,
+          p_occurred_at: input.occurredAt,
+          p_updated_by: input.updatedBy,
+        }),
+      ),
+    ),
+  );
+  return { outcome: parsePartnerOpOutcome(row.outcome), ...parseCounters(row) };
 }
 
 async function callRpc(fn: string, args: Record<string, unknown>): Promise<unknown> {
@@ -123,6 +155,13 @@ function parseOutcome(value: unknown): AiSessionConsumeOutcome {
     if (value === outcome) return outcome;
   }
   throw new Error("Invalid AI session consume outcome");
+}
+
+function parsePartnerOpOutcome(value: unknown): PartnerAiSessionOpOutcome {
+  for (const outcome of PARTNER_AI_SESSION_OP_OUTCOMES) {
+    if (value === outcome) return outcome;
+  }
+  throw new Error("Invalid partner AI session op outcome");
 }
 
 function parseQuotaRow(value: unknown): AiSessionQuota {

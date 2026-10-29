@@ -434,6 +434,96 @@ paths:
                       code: { type: string, example: PROVISIONING_DISABLED }
                       message: { type: string }
 
+  /api/v1/partner/tenants/ai-sessions:
+    post:
+      tags: [Partner API]
+      summary: Change a tenant AI session balance from Mindbloom
+      description: |
+        Server-to-server endpoint for Mindbloom to set the base session limit, add a topup, or reset
+        base usage. Each `event_id` is applied at most once, in the same transaction as its audit log.
+        `set_base` and `reset_base` never change `topup_balance`. Does not touch `monthly_message_limit`.
+
+        Requires `TENANT_PROVISION_SECRET` on the server and matching `x-tenant-provision-secret`.
+      security:
+        - TenantProvisionSecret: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PartnerAiSessionOpRequest"
+      responses:
+        "200":
+          description: Change applied, or the same event_id was already applied.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerAiSessionOpResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Company code is missing or revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code: { type: string, example: COMPANY_CODE_NOT_FOUND }
+                      message: { type: string, example: Invalid or revoked company code. }
+        "409":
+          description: The event_id was already used with a different company code, op, or amount.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code: { type: string, example: EVENT_ID_CONFLICT }
+                      message: { type: string }
+        "429":
+          description: Rate limited per IP and company code. See the Retry-After header.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code: { type: string, example: RATE_LIMITED }
+                      message: { type: string, example: Too many AI session requests. }
+        "500":
+          description: Change failed. Nothing was applied.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code: { type: string, example: INTERNAL_ERROR }
+                      message: { type: string }
+        "503":
+          description: Partner provisioning not configured (missing TENANT_PROVISION_SECRET).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code: { type: string, example: PROVISIONING_DISABLED }
+                      message: { type: string }
+
   /api/setup/platform-admin:
     post:
       tags: [Admin - Setup]
@@ -1341,6 +1431,62 @@ components:
           $ref: "#/components/schemas/Tenant"
         company_code:
           type: string
+
+    PartnerAiSessionOpRequest:
+      type: object
+      required: [company_code, op, event_id]
+      properties:
+        company_code:
+          type: string
+          description: Shared company code; normalized to uppercase before lookup.
+          minLength: 4
+          maxLength: 64
+          pattern: "^[A-Za-z0-9]+$"
+        op:
+          type: string
+          enum: [set_base, add_topup, reset_base]
+        amount:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+          description: |
+            Required for set_base (0 or more) and add_topup (1 or more). Optional for reset_base;
+            omitted keeps base_limit, 0 sets it to 0. Must be a JSON number, not a string or null.
+        event_id:
+          type: string
+          maxLength: 200
+          description: Applied once. A retry with the same op and amount returns idempotent true.
+        occurred_at:
+          type: string
+          format: date-time
+        updated_by:
+          type: string
+          maxLength: 200
+
+    PartnerAiSessionOpResponse:
+      type: object
+      required: [success, idempotent, company_code, op, base_limit, base_used, topup_balance, remaining]
+      properties:
+        success:
+          type: boolean
+          example: true
+        idempotent:
+          type: boolean
+          description: True when the same event_id was already applied.
+        company_code:
+          type: string
+        op:
+          type: string
+          enum: [set_base, add_topup, reset_base]
+        base_limit:
+          type: integer
+        base_used:
+          type: integer
+        topup_balance:
+          type: integer
+        remaining:
+          type: integer
+          description: max(base_limit - base_used, 0) + topup_balance.
 
     CreateTenantRequest:
       type: object

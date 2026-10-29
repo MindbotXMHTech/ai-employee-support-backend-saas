@@ -177,4 +177,47 @@ describe("aiSessionQuotaRepository", () => {
       new_base_limit: 0,
     });
   });
+
+  const partnerOp = {
+    companyCode: "XAZ342WG",
+    op: "reset_base",
+    amount: null,
+    eventId: "evt-1",
+    occurredAt: null,
+    updatedBy: null,
+  } as const;
+
+  it("applies a partner op through one RPC and returns its outcome and counters", async () => {
+    const rpc = vi.fn(async () => ({
+      data: [{ outcome: "applied", base_limit: 9, base_used: 0, topup_balance: 3 }],
+      error: null,
+    }));
+    const { applyPartnerOp } = await loadRepository(rpc);
+
+    await expect(applyPartnerOp(partnerOp)).resolves.toEqual({
+      outcome: "applied",
+      base_limit: 9,
+      base_used: 0,
+      topup_balance: 3,
+    });
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(rpc).toHaveBeenCalledWith("apply_partner_ai_session_op", {
+      p_company_code: "XAZ342WG",
+      p_op: "reset_base",
+      p_amount: null,
+      p_event_id: "evt-1",
+      p_occurred_at: null,
+      p_updated_by: null,
+    });
+  });
+
+  it("throws on an unknown partner op outcome", async () => {
+    const rpc = vi.fn(async () => ({
+      data: [{ outcome: "maybe", base_limit: 0, base_used: 0, topup_balance: 0 }],
+      error: null,
+    }));
+    const { applyPartnerOp } = await loadRepository(rpc);
+
+    await expect(applyPartnerOp(partnerOp)).rejects.toThrow();
+  });
 });
