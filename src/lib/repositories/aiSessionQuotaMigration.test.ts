@@ -55,6 +55,13 @@ describe("0008_tenant_ai_session_quota", () => {
     expect(assignsTopupBalance(functionSql(sql, "reset_ai_session_base"))).toBe(false);
   });
 
+  it("clears base usage and replaces the base limit only when a new limit is passed", () => {
+    const body = functionSql(sql, "reset_ai_session_base").replace(/--.*$/gm, "").toLowerCase();
+    expect(body).toMatch(/base_used\s*=\s*0/);
+    expect(body).toMatch(/when reset_ai_session_base\.new_base_limit is null then q\.base_limit/);
+    expect(body).toMatch(/else reset_ai_session_base\.new_base_limit/);
+  });
+
   it("uses an empty search_path on every security definer function", () => {
     const code = sql.replace(/--.*$/gm, "");
     expect(code.includes("search_path = public")).toBe(false);
