@@ -382,6 +382,8 @@ Content-Type: application/json
 
 Example body: `company_code` (required; normalized to uppercase), `quota` (integer 0–1_000_000), `event_id` (required for retry-safe idempotency), optional `occurred_at` and `updated_by`. The endpoint resolves the tenant from the active company code, updates `tenants.monthly_message_limit` and derives `tenants.status` from quota, and writes an audit log. Do not send `tenant_id`, `plan`, or `status` from Mindbloom.
 
+To change a tenant's AI session balance, Mindbloom calls `POST /api/v1/partner/tenants/ai-sessions` with the same header. Body: `company_code`, `event_id`, optional `occurred_at` and `updated_by`, and `op` with `amount`: `set_base` (amount 0 or more), `add_topup` (amount 1 or more), or `reset_base` (optional amount; omitted keeps `base_limit`). Amounts must be JSON integers. Each `event_id` is applied once in one Postgres transaction (`apply_partner_ai_session_op`) together with its audit log. A retry returns `idempotent: true`. The same `event_id` with a different company, op, or amount returns `409 EVENT_ID_CONFLICT`. `set_base` and `reset_base` never change `topup_balance`, and this endpoint does not touch `monthly_message_limit`. The response returns `base_limit`, `base_used`, `topup_balance`, and `remaining`.
+
 See `docs/openapi.yaml` tag **Partner API** for schemas.
 
 **Optional — Platform Admin API (auto-generated company code)**

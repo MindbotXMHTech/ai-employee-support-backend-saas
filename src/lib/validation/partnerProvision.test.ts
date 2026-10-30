@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  partnerAiSessionOpSchema,
   partnerProvisionTenantSchema,
   partnerRevokeTenantSchema,
   partnerTenantPlanSyncSchema,
@@ -111,6 +112,52 @@ describe("partnerTenantPlanSyncSchema", () => {
       expect(parsed.data).not.toHaveProperty("plan");
       expect(parsed.data).not.toHaveProperty("status");
     }
+  });
+});
+
+describe("partnerAiSessionOpSchema", () => {
+  const base = { company_code: "xaz342wg", event_id: "evt-1" };
+
+  it("rejects add_topup amount 0", () => {
+    expect(partnerAiSessionOpSchema.safeParse({ ...base, op: "add_topup", amount: 0 }).success).toBe(false);
+  });
+
+  it("accepts add_topup amount 1 and uppercases company_code", () => {
+    const parsed = partnerAiSessionOpSchema.safeParse({ ...base, op: "add_topup", amount: 1 });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.company_code).toBe("XAZ342WG");
+  });
+
+  it("rejects add_topup amount given as a string", () => {
+    expect(partnerAiSessionOpSchema.safeParse({ ...base, op: "add_topup", amount: "20" }).success).toBe(
+      false,
+    );
+  });
+
+  it("accepts set_base amount 0", () => {
+    expect(partnerAiSessionOpSchema.safeParse({ ...base, op: "set_base", amount: 0 }).success).toBe(true);
+  });
+
+  it("accepts reset_base without amount and leaves amount undefined", () => {
+    const parsed = partnerAiSessionOpSchema.safeParse({ ...base, op: "reset_base" });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.amount).toBeUndefined();
+  });
+
+  it("accepts reset_base amount 0", () => {
+    const parsed = partnerAiSessionOpSchema.safeParse({ ...base, op: "reset_base", amount: 0 });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.amount).toBe(0);
+  });
+
+  it("rejects reset_base amount null", () => {
+    expect(partnerAiSessionOpSchema.safeParse({ ...base, op: "reset_base", amount: null }).success).toBe(
+      false,
+    );
+  });
+
+  it("rejects an unknown op", () => {
+    expect(partnerAiSessionOpSchema.safeParse({ ...base, op: "drain", amount: 1 }).success).toBe(false);
   });
 });
 

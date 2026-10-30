@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { PartnerAiSessionOp } from "@/lib/domain/partnerAiSession";
 
 const companyCodeField = z
   .string()
@@ -33,6 +34,27 @@ export const partnerTenantPlanSyncSchema = z.object({
 });
 
 export type PartnerTenantPlanSyncInput = z.infer<typeof partnerTenantPlanSyncSchema>;
+
+const partnerAiSessionEventFields = {
+  company_code: companyCodeField,
+  event_id: z.string().trim().min(1, "event_id is required").max(200),
+  occurred_at: z.string().datetime().optional(),
+  updated_by: z.string().trim().max(200).optional(),
+};
+
+const aiSessionAmount = z.number().int().min(0).max(1_000_000);
+
+export const partnerAiSessionOpSchema = z.discriminatedUnion("op", [
+  z.object({ ...partnerAiSessionEventFields, op: z.literal("set_base"), amount: aiSessionAmount }),
+  z.object({ ...partnerAiSessionEventFields, op: z.literal("add_topup"), amount: aiSessionAmount.min(1) }),
+  z.object({ ...partnerAiSessionEventFields, op: z.literal("reset_base"), amount: aiSessionAmount.optional() }),
+]);
+
+type SubsetOf<Sub extends Super, Super> = Sub;
+type SchemaCommand = z.infer<typeof partnerAiSessionOpSchema>;
+type SchemaOps = SubsetOf<PartnerAiSessionOp, SubsetOf<SchemaCommand["op"], PartnerAiSessionOp>>;
+
+export type PartnerAiSessionCommand = Extract<SchemaCommand, { op: SchemaOps }>;
 
 /** Compensating revoke when Mindbloom local upsert fails after partner create (OWASP-04). */
 export const partnerRevokeTenantSchema = z.object({
