@@ -31,6 +31,7 @@ describe("POST /api/v2/chat", () => {
         "http://localhost/api/v2/chat",
         {
           company_code: "ABC503",
+          event_id: "evt-1",
         },
         { "x-central-bot-secret": "wrong-secret" },
       ),
@@ -86,6 +87,31 @@ describe("POST /api/v2/chat", () => {
     expect(executeCentralBotV2Chat).not.toHaveBeenCalled();
   });
 
+  it("rejects a missing event id before the use case", async () => {
+    vi.doMock("@/lib/api/auth", () => ({
+      authenticateCentralBotRequest: vi.fn(async () => ({ ok: true })),
+    }));
+    vi.doMock("@/application/central-bot/v2-chat.use-case", () => ({
+      executeCentralBotV2Chat,
+    }));
+
+    const { POST } = await import("./route");
+    const response = await POST(
+      jsonRequest(
+        "http://localhost/api/v2/chat",
+        { company_code: "ABC503" },
+        { "x-central-bot-secret": "central-secret" },
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: { code: "VALIDATION_ERROR", message: "event_id is required" },
+    });
+    expect(executeCentralBotV2Chat).not.toHaveBeenCalled();
+  });
+
   it("returns 404 from use case when company code is invalid", async () => {
     vi.doMock("@/lib/api/auth", () => ({
       authenticateCentralBotRequest: vi.fn(async () => ({ ok: true })),
@@ -106,6 +132,7 @@ describe("POST /api/v2/chat", () => {
         "http://localhost/api/v2/chat",
         {
           company_code: "BADCODE",
+          event_id: "evt-1",
         },
         { "x-central-bot-secret": "central-secret" },
       ),
@@ -130,13 +157,13 @@ describe("POST /api/v2/chat", () => {
 
     const { POST } = await import("./route");
     const response = await POST(
-      jsonRequest("http://localhost/api/v2/chat", { company_code: "abc503" }, {
+      jsonRequest("http://localhost/api/v2/chat", { company_code: "abc503", event_id: " evt-1 " }, {
         "x-central-bot-secret": "central-secret",
       }),
     );
 
     expect(response.status).toBe(200);
-    expect(executeCentralBotV2Chat).toHaveBeenCalledWith("ABC503");
+    expect(executeCentralBotV2Chat).toHaveBeenCalledWith("ABC503", "evt-1");
     await expect(response.json()).resolves.toEqual(sessionBody);
   });
 });

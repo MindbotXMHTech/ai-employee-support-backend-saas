@@ -163,9 +163,10 @@ paths:
       summary: Spend one AI session for a company
       description: |
         Names the company with `company_code`, the same way as `GET /api/v2/usage`.
-        Auth is `x-central-bot-secret` only. This route spends one session and returns the same
-        `ai_session` body as the GET. It does not call the model, log a message, or create an employee link.
-        `POST /api/v1/chat` is unchanged.
+        Auth is `x-central-bot-secret` only. `event_id` is claimed in the same transaction as the spend,
+        so a retry of that id returns the current balance and does not spend a second unit. The same id
+        for another company returns 409. The body matches `GET /api/v2/usage`. This route does not call
+        the model. `POST /api/v1/chat` is unchanged.
       security:
         - CentralBotSecret: []
       requestBody:
@@ -179,6 +180,7 @@ paths:
                 summary: With x-central-bot-secret
                 value:
                   company_code: ABC503
+                  event_id: chat-evt-1
       responses:
         "200":
           description: Session balance after the spend, or the current balance when nothing was spent.
@@ -201,6 +203,17 @@ paths:
                 error:
                   code: INVALID_COMPANY_CODE
                   message: Invalid or revoked company code.
+        "409":
+          description: This event_id was already claimed for a different company.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error:
+                  code: EVENT_ID_CONFLICT
+                  message: event_id was already used for a different company.
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -1141,7 +1154,7 @@ components:
 
     ChatV2Request:
       type: object
-      required: [company_code]
+      required: [company_code, event_id]
       properties:
         company_code:
           type: string
@@ -1149,6 +1162,11 @@ components:
           maxLength: 64
           pattern: "^[A-Za-z0-9]+$"
           description: Active company code. Trimmed and uppercased before lookup.
+        event_id:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Idempotency key for this spend. A retry with the same id does not spend again.
 
     ChatSuccessResponse:
       type: object

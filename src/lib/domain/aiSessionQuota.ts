@@ -6,6 +6,22 @@ export const AI_SESSION_CONSUME_OUTCOMES = [
 
 export type AiSessionConsumeOutcome = (typeof AI_SESSION_CONSUME_OUTCOMES)[number];
 
+/** One chat spend claimed by event_id. A replay does not spend again. */
+export const AI_SESSION_CONSUME_EVENT_OUTCOMES = [
+  "applied",
+  "replayed",
+  "exhausted",
+  "not_provisioned",
+  "company_code_not_found",
+  "event_id_conflict",
+] as const;
+
+export type AiSessionConsumeEventOutcome = (typeof AI_SESSION_CONSUME_EVENT_OUTCOMES)[number];
+
+export interface AiSessionConsumeEventResult extends AiSessionQuotaCounters {
+  outcome: AiSessionConsumeEventOutcome;
+}
+
 export interface AiSessionQuotaCounters {
   base_limit: number;
   base_used: number;

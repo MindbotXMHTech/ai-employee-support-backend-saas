@@ -3,7 +3,7 @@ import {
   toAiSessionSnapshot,
   type AiSessionSnapshot,
 } from "@/lib/domain/aiSessionQuota";
-import { consumeSession, getQuota } from "@/lib/repositories/aiSessionQuotaRepository";
+import { consumeSession, consumeSessionEvent, getQuota } from "@/lib/repositories/aiSessionQuotaRepository";
 
 export { checkAiSessionQuota, toAiSessionSnapshot, type AiSessionSnapshot };
 
@@ -15,4 +15,9 @@ export async function findAiSessionQuota(tenantId: string) {
 /** Spends one session. The RPC returns exhausted without writing when the row is missing or empty. */
 export async function consumeAiSession(tenantId: string) {
   return consumeSession(tenantId);
+}
+
+/** Claims eventId and spends at most once. A replay returns the current balance. */
+export async function consumeAiSessionEvent(companyCode: string, eventId: string) {
+  return consumeSessionEvent({ companyCode, eventId });
 }

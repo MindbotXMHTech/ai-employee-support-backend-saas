@@ -1,23 +1,30 @@
-import { checkAiSessionQuota, toAiSessionUsageBody, type AiSessionUsageBody } from "@/lib/domain/aiSessionQuota";
-import { consumeAiSession, findAiSessionQuota } from "@/lib/services/aiSessionQuotaService";
-import { findActiveTenantByCompanyCode } from "@/lib/services/tenantService";
+import {
+  AI_SESSION_NOT_PROVISIONED_MESSAGE,
+  toAiSessionUsageBody,
+  type AiSessionConsumeEventResult,
+  type AiSessionUsageBody,
+} from "@/lib/domain/aiSessionQuota";
+import { consumeAiSessionEvent } from "@/lib/services/aiSessionQuotaService";
 
-type CentralBotV2InvalidCompanyBody = {
+type CentralBotV2ErrorBody = {
   success: false;
   error: {
-    code: "INVALID_COMPANY_CODE";
+    code: "INVALID_COMPANY_CODE" | "EVENT_ID_CONFLICT";
     message: string;
   };
 };
 
 export type CentralBotV2ChatHttpResult =
-  | { statusCode: 404; body: CentralBotV2InvalidCompanyBody }
+  | { statusCode: 404 | 409; body: CentralBotV2ErrorBody }
   | { statusCode: 200; body: AiSessionUsageBody };
 
-/** Spends one AI session for the company and returns the same balance body as GET /api/v2/usage. */
-export async function executeCentralBotV2Chat(companyCode: string): Promise<CentralBotV2ChatHttpResult> {
-  const tenant = await findActiveTenantByCompanyCode(companyCode);
-  if (!tenant) {
+/** Spends at most one AI session for this event_id and returns the same balance body as GET /api/v2/usage. */
+export async function executeCentralBotV2Chat(
+  companyCode: string,
+  eventId: string,
+): Promise<CentralBotV2ChatHttpResult> {
+  const spent = await consumeAiSessionEvent(companyCode, eventId);
+  if (spent.outcome === "company_code_not_found") {
     return {
       statusCode: 404,
       body: {
@@ -26,13 +33,32 @@ export async function executeCentralBotV2Chat(companyCode: string): Promise<Cent
       },
     };
   }
-
-  const sessionRow = await findAiSessionQuota(tenant.id);
-  const gate = checkAiSessionQuota(sessionRow);
-  if (!gate.enrolled || !gate.allowed) {
-    return { statusCode: 200, body: toAiSessionUsageBody(sessionRow) };
+  if (spent.outcome === "event_id_conflict") {
+    return {
+      statusCode: 409,
+      body: {
+        success: false,
+        error: {
+          code: "EVENT_ID_CONFLICT",
+          message: "event_id was already used for a different company.",
+        },
+      },
+    };
+  }
+  if (spent.outcome === "not_provisioned") {
+    return {
+      statusCode: 200,
+      body: { ai_session: null, message: AI_SESSION_NOT_PROVISIONED_MESSAGE },
+    };
   }
 
-  const spent = await consumeAiSession(tenant.id);
-  return { statusCode: 200, body: toAiSessionUsageBody(spent) };
+  return { statusCode: 200, body: toAiSessionUsageBody(countersOf(spent)) };
+}
+
+function countersOf(spent: AiSessionConsumeEventResult) {
+  return {
+    base_limit: spent.base_limit,
+    base_used: spent.base_used,
+    topup_balance: spent.topup_balance,
+  };
 }
