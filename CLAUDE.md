@@ -29,7 +29,7 @@ When working in this repository:
 Implementation: `src/lib/validation/partnerProvision.ts`, `createPartnerTenantOnboarding()` and `syncTenantPlanFromPartner()` in `src/lib/services/tenantService.ts`, `deriveTenantStatusFromQuota()`.
 
 - **`monthly_message_limit = quota`**; **`status = quota > 0 ? active : suspended`**
-- Chat: `enforceTenantAvailability()` blocks when `monthly_message_limit <= 0` (not plan-based trial expiry for partner tenants)
+- **v1 chat only:** `enforceTenantAvailability()` blocks when `monthly_message_limit <= 0` (not plan-based trial expiry for partner tenants). v2 chat does not call it.
 - **`downgradeExpiredTrialTenantsToFree`** skips partner-provisioned tenants (audit `tenant.onboarded` + `partner_company_code`)
 - **Platform Admin Tenant Controls** (`tenant-management-form.tsx`): name/plan/status/message limit read-only; `PATCH /api/admin/tenants/[id]` rejects those fields with 403
 - Partner routes rate-limited per IP + `company_code` (`src/lib/api/partnerRateLimit.ts`)
@@ -37,3 +37,23 @@ Implementation: `src/lib/validation/partnerProvision.ts`, `createPartnerTenantOn
 **Local dev with Mindbloom Edge (Docker):** Mindbloom sets `PARTNER_TENANT_API_URL=http://host.docker.internal:3001/api/v1/partner/tenants`. This repo needs `TENANT_PROVISION_SECRET` in `.env` / `.env.local` and **`supabase db push`** so `public.tenants` exists. Run `npm run dev:local` or `npm run dev -- -p 3001`.
 
 **Deploy with Mindbloom MB-882** — if production still validates `plan` on partner APIs, Mindbloom create/update sync will fail with `VALIDATION_ERROR`.
+
+## v1 messages and v2 sessions are different paths
+
+v2 does not use the message-count path. Do not put message quota, `enforceTenantAvailability`, or a filled-in `quota` field back onto v2.
+
+| | v1 | v2 |
+|--|----|----|
+| Chat | `POST /api/v1/chat` → `handleChatRequest` | `POST /api/v2/chat` spends one session. It does not call the model. |
+| Usage | `GET /api/v1/usage` message counters | `GET /api/v2/usage` reads the AI session balance |
+| Identity | `external_user_id` plus an employee link | `company_code` text and `x-central-bot-secret` only |
+| Gate | entitlement, then `checkMessageQuota` | `findAiSessionQuota`, then `consumeAiSession` when remaining is above 0 |
+| Success body | chat reply plus `quota` | the same `ai_session` body as `GET /api/v2/usage` |
+
+Mindbloom owns the company's end date and syncs sessions (`set_base`, `add_topup`, `reset_base`). A lapsed company is closed here when Mindbloom resets the base. SaaS does not read that date on v2. No session row returns `ai_session: null`. A row with nothing left returns `remaining: 0` and spends nothing.
+
+`handleChatRequest` stays the message path. Do not point v2 at it.
+
+## Laziness Protocol
+
+Write the smallest change that solves the problem. Delete a branch instead of adding a second path that compensates for it. Keep one decision in one place. Do not add a wrapper, a parallel quota field, or a shared flag so v2 can keep speaking the v1 message contract.

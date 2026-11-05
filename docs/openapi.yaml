@@ -109,7 +109,6 @@ paths:
         Main API for central LINE bot integration.
 
         Authenticate with **`x-central-bot-secret`** or legacy **`x-api-key`** (no JSON-body auth secrets).
-        For tenant-scoped **workflow** tokens when headers are impossible, use **`POST /api/v2/chat`** instead.
 
         If the user is not linked yet, send `company_code` together with the
         first message. The backend will link the user and answer in the same call.
@@ -161,21 +160,12 @@ paths:
   /api/v2/chat:
     post:
       tags: [Bot API]
-      summary: Simplified central bot chat (user_id, message, company_code)
+      summary: Spend one AI session for a company
       description: |
-        LINE-oriented endpoint for central bot integrations.
-
-        Authenticate with **`x-central-bot-secret`** (preferred), **or** send a
-        tenant-scoped **`workflow_token`** in the JSON body when the HTTP client
-        cannot set custom headers (same semantics as admin “Workflow HTTP” tokens).
-
-        Request fields: `user_id`, `message`, and `company_code`. Backend resolves
-        tenant, upserts user-to-tenant link where applicable, then runs the same
-        AI orchestration pipeline as `/api/v1/chat`.
-
-        **Cross-tenant link errors:** `x-central-bot-secret` paths return HTTP **409**
-        with `error.code` **`TENANT_CONFLICT`**. The `workflow_token` path returns HTTP **403**
-        with **`TENANT_MISMATCH`** when the user is already linked to a different tenant.
+        Names the company with `company_code`, the same way as `GET /api/v2/usage`.
+        Auth is `x-central-bot-secret` only. This route spends one session and returns the same
+        `ai_session` body as the GET. It does not call the model, log a message, or create an employee link.
+        `POST /api/v1/chat` is unchanged.
       security:
         - CentralBotSecret: []
       requestBody:
@@ -188,40 +178,20 @@ paths:
               centralHeader:
                 summary: With x-central-bot-secret
                 value:
-                  user_id: "111"
-                  message: อยากคุยด้วย
-                  company_code: ABC503
-              workflowBody:
-                summary: Headerless (workflow_token only)
-                value:
-                  workflow_token: wf_live_...
-                  user_id: Uxxxxxxxxxxxxxxxx
-                  message: อยากคุยด้วย
                   company_code: ABC503
       responses:
         "200":
-          description: Successful AI response.
+          description: Session balance after the spend, or the current balance when nothing was spent.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ChatSuccessResponse"
+                $ref: "#/components/schemas/UsageV2Response"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "403":
-          description: User already linked to a different tenant (workflow_token path).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                success: false
-                error:
-                  code: TENANT_MISMATCH
-                  message: This user is already linked to a different company.
         "404":
-          description: Invalid or revoked company code (or invalid code for the workflow token tenant).
+          description: Unknown or revoked company code.
           content:
             application/json:
               schema:
@@ -231,8 +201,6 @@ paths:
                 error:
                   code: INVALID_COMPANY_CODE
                   message: Invalid or revoked company code.
-        "409":
-          $ref: "#/components/responses/TenantConflict"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -290,6 +258,61 @@ paths:
           $ref: "#/components/responses/TenantNotResolved"
         "409":
           $ref: "#/components/responses/TenantConflict"
+
+  /api/v2/usage:
+    get:
+      tags: [Bot API]
+      summary: Get the AI session bucket for one company
+      description: |
+        Names the company with query `company_code` (4–64 letters or digits). Auth is `x-central-bot-secret` only.
+        Looks up an active `tenant_company_codes` row and reads the AI-session bucket. Does not spend a session,
+        does not create an employee link, and does not return message quota.
+        When the company exists and has no session row, `ai_session` is null and `message` is `Session has not been provisioned yet`.
+        Unknown and revoked codes share `404` `INVALID_COMPANY_CODE`.
+        Message counters stay on `GET /api/v1/usage`.
+      security:
+        - CentralBotSecret: []
+      parameters:
+        - name: company_code
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 4
+            maxLength: 64
+            pattern: "^[A-Za-z0-9]+$"
+          description: Active company code. Trimmed and uppercased before lookup.
+      responses:
+        "200":
+          description: AI session snapshot, or a notice that the session row does not exist yet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageV2Response"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Unknown or revoked company code.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, error]
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        example: INVALID_COMPANY_CODE
+                      message:
+                        type: string
+                        example: Invalid or revoked company code.
 
   /api/v1/partner/tenants:
     post:
@@ -1118,25 +1141,14 @@ components:
 
     ChatV2Request:
       type: object
-      required: [user_id, message, company_code]
+      required: [company_code]
       properties:
-        user_id:
-          type: string
-          maxLength: 255
-          description: External user id from the central bot or legacy system.
-        message:
-          type: string
-          minLength: 1
-          maxLength: 8000
         company_code:
           type: string
+          minLength: 4
           maxLength: 64
-        workflow_token:
-          type: string
-          maxLength: 512
-          description: |
-            Optional. Tenant-scoped token when `x-central-bot-secret` cannot be sent as a header.
-            Do not send `CENTRAL_BOT_SECRET` in this field.
+          pattern: "^[A-Za-z0-9]+$"
+          description: Active company code. Trimmed and uppercased before lookup.
 
     ChatSuccessResponse:
       type: object
@@ -1303,6 +1315,29 @@ components:
           type: integer
         estimated_cost_usd:
           type: number
+
+    AiSessionSnapshot:
+      type: object
+      required: [base_remaining, topup_balance, remaining]
+      properties:
+        base_remaining:
+          type: integer
+        topup_balance:
+          type: integer
+        remaining:
+          type: integer
+
+    UsageV2Response:
+      type: object
+      required: [ai_session]
+      properties:
+        ai_session:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/AiSessionSnapshot"
+        message:
+          type: string
+          example: Session has not been provisioned yet
 
     Tenant:
       type: object
