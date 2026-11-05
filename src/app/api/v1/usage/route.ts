@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateBotRequest, authenticateCentralBotRequest } from "@/lib/api/auth";
 import { buildTenantConflictErrorBody, resolveTenantForCentralBot } from "@/lib/services/centralBotService";
-import { getQuotaSnapshot, currentMonthStart } from "@/lib/services/quotaService";
+import { getMessageQuotaSnapshot, currentMonthStart } from "@/lib/services/quotaService";
 import { usageSummary } from "@/lib/services/usageService";
 import type { Tenant } from "@/lib/types";
 
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
     tenant = auth.tenant;
   }
 
-  const [quota, usage] = await Promise.all([getQuotaSnapshot(tenant), usageSummary(tenant.id, currentMonthStart())]);
+  const [quota, usage] = await Promise.all([getMessageQuotaSnapshot(tenant), usageSummary(tenant.id, currentMonthStart())]);
 
   return NextResponse.json({
     plan: tenant.plan,

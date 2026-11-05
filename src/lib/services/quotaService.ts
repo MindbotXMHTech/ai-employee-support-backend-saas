@@ -6,7 +6,7 @@ export function currentMonthStart() {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
 }
 
-export async function getQuotaSnapshot(tenant: Tenant): Promise<QuotaSnapshot> {
+export async function getMessageQuotaSnapshot(tenant: Tenant): Promise<QuotaSnapshot> {
   const supabase = createSupabaseServiceClient();
   const fromDate = tenant.plan === "pro" ? currentMonthStart() : tenant.trial_started_at ?? tenant.created_at;
 
@@ -24,8 +24,8 @@ export async function getQuotaSnapshot(tenant: Tenant): Promise<QuotaSnapshot> {
   return { plan: tenant.plan, used, limit, remaining: Math.max(limit - used, 0) };
 }
 
-export async function checkQuota(tenant: Tenant) {
-  const quota = await getQuotaSnapshot(tenant);
+export async function checkMessageQuota(tenant: Tenant) {
+  const quota = await getMessageQuotaSnapshot(tenant);
   return {
     ok: quota.remaining > 0,
     quota,

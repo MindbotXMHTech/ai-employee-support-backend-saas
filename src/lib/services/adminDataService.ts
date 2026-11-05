@@ -4,7 +4,7 @@ import {
 } from "@/lib/supabase/server";
 import {
   currentMonthStart,
-  getQuotaSnapshot,
+  getMessageQuotaSnapshot,
 } from "@/lib/services/quotaService";
 import { usageSummary } from "@/lib/services/usageService";
 
@@ -195,7 +195,7 @@ export async function tenantManagementData(tenantId: string) {
 
   if (!tenant) return null;
   const [quota, usage] = await Promise.all([
-    getQuotaSnapshot(tenant),
+    getMessageQuotaSnapshot(tenant),
     usageSummary(tenantId, currentMonthStart()),
   ]);
   return {
@@ -247,7 +247,7 @@ export async function tenantDashboardData(tenantId?: string | null) {
 
   if (!tenant) return null;
   const [quota, usage] = await Promise.all([
-    getQuotaSnapshot(tenant),
+    getMessageQuotaSnapshot(tenant),
     usageSummary(tenantId, currentMonthStart()),
   ]);
   return {

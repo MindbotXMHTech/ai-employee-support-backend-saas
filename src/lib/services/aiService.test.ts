@@ -39,8 +39,16 @@ describe("aiService", () => {
       logUsage,
     }));
     vi.doMock("@/lib/services/quotaService", () => ({
-      checkQuota: vi.fn(async () => ({ ok: true })),
-      getQuotaSnapshot: vi.fn(async () => ({ plan: "trial", used: 1, limit: 500, remaining: 499 })),
+      checkMessageQuota: vi.fn(async () => ({ ok: true, quota: { plan: "trial", used: 1, limit: 500, remaining: 499 } })),
+      getMessageQuotaSnapshot: vi.fn(async () => ({ plan: "trial", used: 1, limit: 500, remaining: 499 })),
+    }));
+    const findAiSessionQuota = vi.fn();
+    const consumeAiSession = vi.fn();
+    vi.doMock("@/lib/services/aiSessionQuotaService", () => ({
+      findAiSessionQuota,
+      consumeAiSession,
+      checkAiSessionQuota: vi.fn(),
+      toAiSessionSnapshot: vi.fn(),
     }));
     vi.doMock("@/lib/services/tenantService", () => ({
       enforceTenantAvailability: vi.fn(async (tenant) => ({ ok: true, tenant })),
@@ -89,15 +97,24 @@ describe("aiService", () => {
       tenantId: fakeTenant.id,
       requestType: "general",
     }));
+    expect(findAiSessionQuota).not.toHaveBeenCalled();
+    expect(consumeAiSession).not.toHaveBeenCalled();
   });
 
   it("returns TRIAL_EXPIRED for free plan before quota or AI orchestration", async () => {
-    const checkQuota = vi.fn(async () => ({ ok: true, quota: { plan: "free", used: 0, limit: 0, remaining: 0 } }));
+    const checkMessageQuota = vi.fn(async () => ({ ok: true, quota: { plan: "free", used: 0, limit: 0, remaining: 0 } }));
+    const findAiSessionQuota = vi.fn();
     const logMessage = vi.fn();
 
     vi.doMock("@/lib/services/quotaService", () => ({
-      checkQuota,
-      getQuotaSnapshot: vi.fn(),
+      checkMessageQuota,
+      getMessageQuotaSnapshot: vi.fn(),
+    }));
+    vi.doMock("@/lib/services/aiSessionQuotaService", () => ({
+      findAiSessionQuota,
+      consumeAiSession: vi.fn(),
+      checkAiSessionQuota: vi.fn(),
+      toAiSessionSnapshot: vi.fn(),
     }));
     vi.doMock("@/lib/services/usageService", () => ({
       logMessage,
@@ -127,7 +144,8 @@ describe("aiService", () => {
         message: "Free plan is not available for chat.",
       },
     });
-    expect(checkQuota).not.toHaveBeenCalled();
+    expect(checkMessageQuota).not.toHaveBeenCalled();
+    expect(findAiSessionQuota).not.toHaveBeenCalled();
     expect(logMessage).not.toHaveBeenCalled();
   });
 });
