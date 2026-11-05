@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { PartnerAiSessionOp } from "@/lib/domain/partnerAiSession";
 
-const companyCodeField = z
+export const companyCodeField = z
   .string()
   .trim()
   .min(4, "company_code must be at least 4 characters")
