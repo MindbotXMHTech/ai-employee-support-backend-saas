@@ -1,6 +1,9 @@
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import {
+  AI_SESSION_CONSUME_EVENT_OUTCOMES,
   AI_SESSION_CONSUME_OUTCOMES,
+  type AiSessionConsumeEventOutcome,
+  type AiSessionConsumeEventResult,
   type AiSessionConsumeOutcome,
   type AiSessionConsumeResult,
   type AiSessionQuota,
@@ -19,6 +22,7 @@ const RPC = {
   getQuota: "get_ai_session_quota",
   upsertQuota: "upsert_ai_session_quota",
   consumeSession: "consume_ai_session",
+  consumeSessionEvent: "consume_ai_session_event",
   setBase: "set_ai_session_base",
   addTopup: "add_ai_session_topup",
   resetBase: "reset_ai_session_base",
@@ -33,6 +37,23 @@ export async function getQuota(tenantId: string): Promise<AiSessionQuota | null>
 
 export async function upsertQuota(tenantId: string): Promise<AiSessionQuota> {
   return parseQuotaRow(onlyRow(rowsOf(await callRpc(RPC.upsertQuota, { tenant_id: tenantId }))));
+}
+
+export async function consumeSessionEvent(input: {
+  companyCode: string;
+  eventId: string;
+}): Promise<AiSessionConsumeEventResult> {
+  const row = recordOf(
+    onlyRow(
+      rowsOf(
+        await callRpc(RPC.consumeSessionEvent, {
+          p_company_code: input.companyCode,
+          p_event_id: input.eventId,
+        }),
+      ),
+    ),
+  );
+  return { outcome: parseConsumeEventOutcome(row.outcome), ...parseCounters(row) };
 }
 
 export async function consumeSession(tenantId: string): Promise<AiSessionConsumeResult> {
@@ -148,6 +169,13 @@ function parseCounters(row: Record<string, unknown>): AiSessionQuotaCounters {
     base_used: parseCounter(row.base_used, "base_used"),
     topup_balance: parseCounter(row.topup_balance, "topup_balance"),
   };
+}
+
+function parseConsumeEventOutcome(value: unknown): AiSessionConsumeEventOutcome {
+  for (const outcome of AI_SESSION_CONSUME_EVENT_OUTCOMES) {
+    if (value === outcome) return outcome;
+  }
+  throw new Error("Invalid AI session consume event outcome");
 }
 
 function parseOutcome(value: unknown): AiSessionConsumeOutcome {

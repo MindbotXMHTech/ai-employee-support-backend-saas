@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextResponse } from "next/server";
-import { fakeChatResponse } from "@/test/fixtures";
 import { jsonRequest } from "@/test/mockNextRequest";
 
 const executeCentralBotV2Chat = vi.hoisted(() => vi.fn());
@@ -31,9 +30,8 @@ describe("POST /api/v2/chat", () => {
       jsonRequest(
         "http://localhost/api/v2/chat",
         {
-          user_id: "line-user-001",
-          message: "hi",
           company_code: "ABC503",
+          event_id: "evt-1",
         },
         { "x-central-bot-secret": "wrong-secret" },
       ),
@@ -56,12 +54,61 @@ describe("POST /api/v2/chat", () => {
     }));
 
     const { POST } = await import("./route");
-    const response = await POST(jsonRequest("http://localhost/api/v2/chat", { user_id: "user-1" }));
+    const response = await POST(
+      jsonRequest("http://localhost/api/v2/chat", { company_code: "AB" }, { "x-central-bot-secret": "central-secret" }),
+    );
 
     expect(response.status).toBe(400);
     const body = await response.json();
     expect(body.success).toBe(false);
     expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(body.error.message).toBe("company_code must be at least 4 characters");
+    expect(executeCentralBotV2Chat).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing company code before the use case", async () => {
+    vi.doMock("@/lib/api/auth", () => ({
+      authenticateCentralBotRequest: vi.fn(async () => ({ ok: true })),
+    }));
+    vi.doMock("@/application/central-bot/v2-chat.use-case", () => ({
+      executeCentralBotV2Chat,
+    }));
+
+    const { POST } = await import("./route");
+    const response = await POST(
+      jsonRequest("http://localhost/api/v2/chat", {}, { "x-central-bot-secret": "central-secret" }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: { code: "VALIDATION_ERROR", message: "company_code must be at least 4 characters" },
+    });
+    expect(executeCentralBotV2Chat).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing event id before the use case", async () => {
+    vi.doMock("@/lib/api/auth", () => ({
+      authenticateCentralBotRequest: vi.fn(async () => ({ ok: true })),
+    }));
+    vi.doMock("@/application/central-bot/v2-chat.use-case", () => ({
+      executeCentralBotV2Chat,
+    }));
+
+    const { POST } = await import("./route");
+    const response = await POST(
+      jsonRequest(
+        "http://localhost/api/v2/chat",
+        { company_code: "ABC503" },
+        { "x-central-bot-secret": "central-secret" },
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: { code: "VALIDATION_ERROR", message: "event_id is required" },
+    });
     expect(executeCentralBotV2Chat).not.toHaveBeenCalled();
   });
 
@@ -84,9 +131,8 @@ describe("POST /api/v2/chat", () => {
       jsonRequest(
         "http://localhost/api/v2/chat",
         {
-          user_id: "line-user-001",
-          message: "อยากได้กำลังใจ",
           company_code: "BADCODE",
+          event_id: "evt-1",
         },
         { "x-central-bot-secret": "central-secret" },
       ),
@@ -103,25 +149,21 @@ describe("POST /api/v2/chat", () => {
     vi.doMock("@/lib/api/auth", () => ({
       authenticateCentralBotRequest: vi.fn(async () => ({ ok: true })),
     }));
-    executeCentralBotV2Chat.mockResolvedValue({ statusCode: 200, body: fakeChatResponse });
+    const sessionBody = { ai_session: { base_remaining: 4, topup_balance: 0, remaining: 4 } };
+    executeCentralBotV2Chat.mockResolvedValue({ statusCode: 200, body: sessionBody });
     vi.doMock("@/application/central-bot/v2-chat.use-case", () => ({
       executeCentralBotV2Chat,
     }));
 
     const { POST } = await import("./route");
-    const payload = {
-      user_id: "line-user-001",
-      message: "อยากได้กำลังใจ",
-      company_code: "ABC503",
-    };
     const response = await POST(
-      jsonRequest("http://localhost/api/v2/chat", payload, {
+      jsonRequest("http://localhost/api/v2/chat", { company_code: "abc503", event_id: " evt-1 " }, {
         "x-central-bot-secret": "central-secret",
       }),
     );
 
     expect(response.status).toBe(200);
-    expect(executeCentralBotV2Chat).toHaveBeenCalledWith(payload);
-    await expect(response.json()).resolves.toEqual(fakeChatResponse);
+    expect(executeCentralBotV2Chat).toHaveBeenCalledWith("ABC503", "evt-1");
+    await expect(response.json()).resolves.toEqual(sessionBody);
   });
 });

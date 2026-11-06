@@ -14,14 +14,6 @@ export const chatRequestSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
-export const chatV2RequestSchema = z.object({
-  user_id: z.string().min(1).max(255),
-  message: z.string().min(1).max(8000),
-  company_code: z.string().min(1).max(64),
-  /** When the HTTP client cannot set `x-central-bot-secret`, send this instead (tenant-scoped). Strip before `handleChatRequest`. */
-  workflow_token: z.string().min(1).max(512).optional(),
-});
-
 export const registerUserRequestSchema = z.object({
   external_user_id: z.string().min(1).max(255).optional(),
   line_user_id: z.string().min(1).max(255).optional(),
@@ -40,6 +32,5 @@ export const playgroundRequestSchema = z.object({
 });
 
 export type ChatRequestInput = z.infer<typeof chatRequestSchema>;
-export type ChatV2RequestInput = z.infer<typeof chatV2RequestSchema>;
 export type RegisterUserRequestInput = z.infer<typeof registerUserRequestSchema>;
 export type PlaygroundRequestInput = z.infer<typeof playgroundRequestSchema>;

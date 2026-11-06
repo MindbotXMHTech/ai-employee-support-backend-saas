@@ -6,6 +6,22 @@ export const AI_SESSION_CONSUME_OUTCOMES = [
 
 export type AiSessionConsumeOutcome = (typeof AI_SESSION_CONSUME_OUTCOMES)[number];
 
+/** One chat spend claimed by event_id. A replay does not spend again. */
+export const AI_SESSION_CONSUME_EVENT_OUTCOMES = [
+  "applied",
+  "replayed",
+  "exhausted",
+  "not_provisioned",
+  "company_code_not_found",
+  "event_id_conflict",
+] as const;
+
+export type AiSessionConsumeEventOutcome = (typeof AI_SESSION_CONSUME_EVENT_OUTCOMES)[number];
+
+export interface AiSessionConsumeEventResult extends AiSessionQuotaCounters {
+  outcome: AiSessionConsumeEventOutcome;
+}
+
 export interface AiSessionQuotaCounters {
   base_limit: number;
   base_used: number;
@@ -35,4 +51,44 @@ export function computeSessionAvailability(counters: AiSessionQuotaCounters): Se
     topupRemaining,
     remaining: baseRemaining + topupRemaining,
   };
+}
+
+/** Returned by GET /api/v2/usage and POST /api/v2/chat when the tenant has no AI-session row. */
+export const AI_SESSION_NOT_PROVISIONED_MESSAGE = "Session has not been provisioned yet";
+
+/** JSON shape returned to chat and usage callers. A missing row is not this object. */
+export interface AiSessionSnapshot {
+  base_remaining: number;
+  topup_balance: number;
+  remaining: number;
+}
+
+export type AiSessionUsageBody =
+  | { ai_session: null; message: string }
+  | { ai_session: AiSessionSnapshot };
+
+/** Same body as GET /api/v2/usage. A missing row is null. Counters are not spent here. */
+export function toAiSessionUsageBody(row: AiSessionQuotaCounters | null): AiSessionUsageBody {
+  if (row === null) {
+    return { ai_session: null, message: AI_SESSION_NOT_PROVISIONED_MESSAGE };
+  }
+  return { ai_session: toAiSessionSnapshot(row) };
+}
+
+export function toAiSessionSnapshot(counters: AiSessionQuotaCounters): AiSessionSnapshot {
+  const availability = computeSessionAvailability(counters);
+  return {
+    base_remaining: availability.baseRemaining,
+    topup_balance: counters.topup_balance,
+    remaining: availability.remaining,
+  };
+}
+
+/** Read-only gate. Null means this tenant has no AI-session row. A row never spends a unit here. */
+export function checkAiSessionQuota(
+  row: AiSessionQuotaCounters | null,
+): { enrolled: false } | { enrolled: true; allowed: boolean; sessions: AiSessionSnapshot } {
+  if (row === null) return { enrolled: false };
+  const sessions = toAiSessionSnapshot(row);
+  return { enrolled: true, allowed: sessions.remaining > 0, sessions };
 }

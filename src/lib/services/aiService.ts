@@ -3,7 +3,7 @@ import { env } from "@/lib/env";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { classifyMessageRuleBased } from "@/lib/services/classificationService";
 import { estimateCost } from "@/lib/services/costService";
-import { checkQuota, getQuotaSnapshot } from "@/lib/services/quotaService";
+import { checkMessageQuota, getMessageQuotaSnapshot } from "@/lib/services/quotaService";
 import { buildHandoff, classifySafetyLevelRuleBased, crisisResponse } from "@/lib/services/safetyService";
 import { enforceTenantAvailability } from "@/lib/services/tenantService";
 import { logMessage, logUsage } from "@/lib/services/usageService";
@@ -143,8 +143,8 @@ export async function handleChatRequest(input: ChatRequestInput & { tenant: Tena
     return { success: false, error: { code: availability.code, message: availability.message } };
   }
 
-  const quotaCheck = await checkQuota(input.tenant);
-  if (!quotaCheck.ok) {
+  const messageQuota = await checkMessageQuota(input.tenant);
+  if (!messageQuota.ok) {
     return {
       success: true,
       reply: "ขณะนี้จำนวนข้อความของบริษัทถึงขีดจำกัดของแพ็กเกจแล้ว กรุณาติดต่อผู้ดูแลระบบของบริษัทเพื่ออัปเกรดหรือเพิ่มโควตาครับ",
@@ -154,10 +154,14 @@ export async function handleChatRequest(input: ChatRequestInput & { tenant: Tena
       sources: [],
       handoff_required: false,
       handoff: { enabled: false, url: null, button_text: null, message: null },
-      quota: quotaCheck.quota,
+      quota: messageQuota.quota,
     };
   }
 
+  return completeChat(input);
+}
+
+async function completeChat(input: ChatRequestInput & { tenant: Tenant }): Promise<ChatApiResponse> {
   const [profile, aiSettings, escalationSettings] = await Promise.all([
     getTenantProfile(input.tenant.id),
     getTenantAiSettings(input.tenant.id),
@@ -210,7 +214,7 @@ export async function handleChatRequest(input: ChatRequestInput & { tenant: Tena
       sources: [],
       handoff_required: true,
       handoff: buildHandoff(escalationSettings),
-      quota: await getQuotaSnapshot(input.tenant),
+      quota: await getMessageQuotaSnapshot(input.tenant),
     };
   }
 
@@ -277,6 +281,6 @@ export async function handleChatRequest(input: ChatRequestInput & { tenant: Tena
     sources,
     handoff_required: false,
     handoff: buildHandoff({ enabled: aiSettings.handoff_enabled, ...escalationSettings }),
-    quota: await getQuotaSnapshot(input.tenant),
+    quota: await getMessageQuotaSnapshot(input.tenant),
   };
 }

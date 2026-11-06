@@ -211,6 +211,25 @@ describe("aiSessionQuotaRepository", () => {
     });
   });
 
+  it("claims a chat spend through one RPC", async () => {
+    const rpc = vi.fn(async () => ({
+      data: [{ outcome: "replayed", base_limit: 4, base_used: 1, topup_balance: 0 }],
+      error: null,
+    }));
+    const { consumeSessionEvent } = await loadRepository(rpc);
+
+    await expect(consumeSessionEvent({ companyCode: "ABC503", eventId: "evt-1" })).resolves.toEqual({
+      outcome: "replayed",
+      base_limit: 4,
+      base_used: 1,
+      topup_balance: 0,
+    });
+    expect(rpc).toHaveBeenCalledWith("consume_ai_session_event", {
+      p_company_code: "ABC503",
+      p_event_id: "evt-1",
+    });
+  });
+
   it("throws on an unknown partner op outcome", async () => {
     const rpc = vi.fn(async () => ({
       data: [{ outcome: "maybe", base_limit: 0, base_used: 0, topup_balance: 0 }],

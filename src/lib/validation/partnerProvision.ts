@@ -1,13 +1,15 @@
 import { z } from "zod";
 import type { PartnerAiSessionOp } from "@/lib/domain/partnerAiSession";
 
-const companyCodeField = z
+export const companyCodeField = z
   .string()
   .trim()
   .min(4, "company_code must be at least 4 characters")
   .max(64, "company_code must be at most 64 characters")
   .regex(/^[A-Za-z0-9]+$/, "company_code must be alphanumeric (A-Z, a-z, 0-9)")
   .transform((s) => s.toUpperCase());
+
+export const eventIdField = z.string().trim().min(1, "event_id is required").max(200);
 
 /** Partner API: SaaS runtime tenant with caller-supplied company code and quota from Mindbloom. */
 export const partnerProvisionTenantSchema = z.object({
@@ -28,7 +30,7 @@ export type PartnerProvisionTenantInput = z.infer<typeof partnerProvisionTenantS
 export const partnerTenantPlanSyncSchema = z.object({
   company_code: companyCodeField,
   quota: z.coerce.number().int().min(0).max(1_000_000),
-  event_id: z.string().trim().min(1, "event_id is required").max(200),
+  event_id: eventIdField,
   occurred_at: z.string().datetime().optional(),
   updated_by: z.string().trim().max(200).optional(),
 });
@@ -37,7 +39,7 @@ export type PartnerTenantPlanSyncInput = z.infer<typeof partnerTenantPlanSyncSch
 
 const partnerAiSessionEventFields = {
   company_code: companyCodeField,
-  event_id: z.string().trim().min(1, "event_id is required").max(200),
+  event_id: eventIdField,
   occurred_at: z.string().datetime().optional(),
   updated_by: z.string().trim().max(200).optional(),
 };
@@ -59,7 +61,7 @@ export type PartnerAiSessionCommand = Extract<SchemaCommand, { op: SchemaOps }>;
 /** Compensating revoke when Mindbloom local upsert fails after partner create (OWASP-04). */
 export const partnerRevokeTenantSchema = z.object({
   company_code: companyCodeField,
-  event_id: z.string().trim().min(1).max(200).optional(),
+  event_id: eventIdField.optional(),
   reason: z.string().trim().max(200).optional(),
 });
 

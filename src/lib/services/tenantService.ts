@@ -251,6 +251,22 @@ export async function downgradeExpiredTrialTenantsToFree(
   };
 }
 
+/** Reads one active company code. Does not create an employee link. */
+export async function findActiveTenantByCompanyCode(companyCode: string): Promise<Tenant | null> {
+  const supabase = createSupabaseServiceClient();
+  const normalizedCode = normalizePartnerCompanyCode(companyCode);
+  const { data, error } = await supabase
+    .from("tenant_company_codes")
+    .select("tenant_id, tenants(*)")
+    .eq("code", normalizedCode)
+    .eq("status", "active")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data?.tenant_id) return null;
+  const tenant = Array.isArray(data.tenants) ? data.tenants[0] : data.tenants;
+  return tenant ? (tenant as Tenant) : null;
+}
+
 export async function syncTenantPlanFromPartner(input: {
   company_code: string;
   quota: number;

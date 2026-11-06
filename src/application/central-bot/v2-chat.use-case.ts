@@ -1,63 +1,36 @@
-import { handleChatRequest } from "@/lib/services/aiService";
 import {
-  buildTenantConflictErrorBody,
-  registerEmployeeTenantLink,
-  TenantConflictError,
-} from "@/lib/services/centralBotService";
-import type { ChatApiResponse } from "@/lib/types";
-import type { ChatV2RequestInput } from "@/lib/validation/chat";
+  AI_SESSION_NOT_PROVISIONED_MESSAGE,
+  toAiSessionUsageBody,
+  type AiSessionConsumeEventResult,
+  type AiSessionUsageBody,
+} from "@/lib/domain/aiSessionQuota";
+import { consumeAiSessionEvent } from "@/lib/services/aiSessionQuotaService";
 
-/** Central bot channel for simplified v2 API (LINE legacy integration). */
-export const CENTRAL_BOT_V2_CHANNEL = "line";
-
-export const CENTRAL_BOT_V2_METADATA_SOURCE = "api_v2_chat";
-
-export function buildV2ConversationId(input: Pick<ChatV2RequestInput, "company_code" | "user_id">) {
-  return `v2:${input.company_code}:${input.user_id}`;
-}
-
-type CentralBotV2InvalidCompanyBody = {
+type CentralBotV2ErrorBody = {
   success: false;
   error: {
-    code: "INVALID_COMPANY_CODE";
+    code: "INVALID_COMPANY_CODE" | "EVENT_ID_CONFLICT";
     message: string;
   };
 };
 
-type CentralBotV2TenantConflictBody = {
-  success: false;
-  error: {
-    code: "TENANT_CONFLICT";
-    message: string;
-  };
+export type CentralBotV2ChatSpendOutcome = "applied" | "replayed" | "exhausted" | "not_provisioned";
+
+export type CentralBotV2ChatSuccessBody = AiSessionUsageBody & {
+  outcome: CentralBotV2ChatSpendOutcome;
 };
 
 export type CentralBotV2ChatHttpResult =
-  | { statusCode: 404; body: CentralBotV2InvalidCompanyBody }
-  | { statusCode: 409; body: CentralBotV2TenantConflictBody }
-  | { statusCode: 200 | 400; body: ChatApiResponse };
+  | { statusCode: 404 | 409; body: CentralBotV2ErrorBody }
+  | { statusCode: 200; body: CentralBotV2ChatSuccessBody };
 
-/** Application / use-case: resolves tenant via company code, then delegates to AI chat orchestration. */
-export async function executeCentralBotV2Chat(parsed: ChatV2RequestInput): Promise<CentralBotV2ChatHttpResult> {
-  let linked;
-  try {
-    linked = await registerEmployeeTenantLink({
-      externalUserId: parsed.user_id,
-      channel: CENTRAL_BOT_V2_CHANNEL,
-      companyCode: parsed.company_code,
-      metadata: { source: CENTRAL_BOT_V2_METADATA_SOURCE },
-    });
-  } catch (error) {
-    if (error instanceof TenantConflictError) {
-      return {
-        statusCode: 409,
-        body: buildTenantConflictErrorBody(),
-      };
-    }
-    throw error;
-  }
-
-  if (!linked?.tenant) {
+/** Spends at most one AI session for this event_id. outcome says whether this event paid. */
+export async function executeCentralBotV2Chat(
+  companyCode: string,
+  eventId: string,
+): Promise<CentralBotV2ChatHttpResult> {
+  const spent = await consumeAiSessionEvent(companyCode, eventId);
+  if (spent.outcome === "company_code_not_found") {
     return {
       statusCode: 404,
       body: {
@@ -66,21 +39,39 @@ export async function executeCentralBotV2Chat(parsed: ChatV2RequestInput): Promi
       },
     };
   }
-
-  const chatResponse = await handleChatRequest({
-    external_user_id: parsed.user_id,
-    channel: CENTRAL_BOT_V2_CHANNEL,
-    message: parsed.message,
-    company_code: parsed.company_code,
-    conversation_id: buildV2ConversationId(parsed),
-    metadata: {
-      source: CENTRAL_BOT_V2_METADATA_SOURCE,
-    },
-    tenant: linked.tenant,
-  });
+  if (spent.outcome === "event_id_conflict") {
+    return {
+      statusCode: 409,
+      body: {
+        success: false,
+        error: {
+          code: "EVENT_ID_CONFLICT",
+          message: "event_id was already used for a different company.",
+        },
+      },
+    };
+  }
+  if (spent.outcome === "not_provisioned") {
+    return {
+      statusCode: 200,
+      body: {
+        ai_session: null,
+        message: AI_SESSION_NOT_PROVISIONED_MESSAGE,
+        outcome: "not_provisioned",
+      },
+    };
+  }
 
   return {
-    statusCode: chatResponse.success ? 200 : 400,
-    body: chatResponse,
+    statusCode: 200,
+    body: { ...toAiSessionUsageBody(countersOf(spent)), outcome: spent.outcome },
+  };
+}
+
+function countersOf(spent: AiSessionConsumeEventResult) {
+  return {
+    base_limit: spent.base_limit,
+    base_used: spent.base_used,
+    topup_balance: spent.topup_balance,
   };
 }

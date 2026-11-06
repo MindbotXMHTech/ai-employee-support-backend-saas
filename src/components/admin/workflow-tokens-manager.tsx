@@ -146,9 +146,9 @@ export function WorkflowTokensManager({
           <DialogContent>
             <DialogTitle>Create workflow token</DialogTitle>
             <DialogDescription>
-              The full token is shown only once. Use it as <code className="font-mono">workflow_token</code> in{" "}
-              <code className="font-mono">POST /api/v2/chat</code> when your tool cannot set{" "}
-              <code className="font-mono">x-central-bot-secret</code>.
+              The full token is shown only once. <code className="font-mono">POST /api/v2/chat</code> does not
+              accept this token. That route requires the <code className="font-mono">x-central-bot-secret</code>{" "}
+              header.
             </DialogDescription>
             <div className="space-y-2 py-2">
               <Label htmlFor="wf-token-name">Label (for your reference)</Label>
