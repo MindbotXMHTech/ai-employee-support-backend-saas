@@ -36,7 +36,7 @@ describe("executeCentralBotV2Chat", () => {
     expect(consumeAiSessionEvent).toHaveBeenCalledWith("BADCODE", "evt-1");
   });
 
-  it("returns the same empty body as usage when no session row exists", async () => {
+  it("returns no session row and outcome not_provisioned when the row is missing", async () => {
     consumeAiSessionEvent.mockResolvedValue({
       outcome: "not_provisioned",
       base_limit: 0,
@@ -47,7 +47,7 @@ describe("executeCentralBotV2Chat", () => {
 
     await expect(executeCentralBotV2Chat("ABC503", "evt-1")).resolves.toEqual({
       statusCode: 200,
-      body: { ai_session: null, message: AI_SESSION_NOT_PROVISIONED_MESSAGE },
+      body: { ai_session: null, message: AI_SESSION_NOT_PROVISIONED_MESSAGE, outcome: "not_provisioned" },
     });
   });
 
@@ -62,7 +62,7 @@ describe("executeCentralBotV2Chat", () => {
 
     await expect(executeCentralBotV2Chat("ABC503", "evt-1")).resolves.toEqual({
       statusCode: 200,
-      body: { ai_session: { base_remaining: 0, topup_balance: 0, remaining: 0 } },
+      body: { ai_session: { base_remaining: 0, topup_balance: 0, remaining: 0 }, outcome: "exhausted" },
     });
   });
 
@@ -80,7 +80,7 @@ describe("executeCentralBotV2Chat", () => {
     expect(consumeAiSessionEvent).toHaveBeenCalledOnce();
     expect(result).toEqual({
       statusCode: 200,
-      body: { ai_session: { base_remaining: 0, topup_balance: 0, remaining: 0 } },
+      body: { ai_session: { base_remaining: 0, topup_balance: 0, remaining: 0 }, outcome: "applied" },
     });
   });
 
@@ -95,7 +95,7 @@ describe("executeCentralBotV2Chat", () => {
 
     await expect(executeCentralBotV2Chat("ABC503", "evt-1")).resolves.toEqual({
       statusCode: 200,
-      body: { ai_session: { base_remaining: 3, topup_balance: 2, remaining: 5 } },
+      body: { ai_session: { base_remaining: 3, topup_balance: 2, remaining: 5 }, outcome: "replayed" },
     });
     expect(consumeAiSessionEvent).toHaveBeenCalledOnce();
   });

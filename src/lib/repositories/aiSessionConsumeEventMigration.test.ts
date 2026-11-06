@@ -38,6 +38,14 @@ describe("0010_consume_ai_session_event", () => {
     expect(spend).toBeGreaterThan(claim);
   });
 
+  it("releases the claim after a spend that does not happen", () => {
+    const spend = fn.indexOf("public.consume_ai_session(");
+    const release = fn.indexOf("delete from public.processed_ai_session_consumes");
+    expect(spend).toBeGreaterThan(-1);
+    expect(release).toBeGreaterThan(spend);
+    expect(fn).toContain("outcome = 'not_provisioned' or outcome = 'exhausted'");
+  });
+
   it("returns a replay without calling consume_ai_session", () => {
     const replay = fn.indexOf("outcome := 'replayed'");
     const spend = fn.indexOf("public.consume_ai_session(");

@@ -47,8 +47,8 @@ v2 does not use the message-count path. Do not put message quota, `enforceTenant
 | Chat | `POST /api/v1/chat` → `handleChatRequest` | `POST /api/v2/chat` spends one session. It does not call the model. |
 | Usage | `GET /api/v1/usage` message counters | `GET /api/v2/usage` reads the AI session balance |
 | Identity | `external_user_id` plus an employee link | `company_code` text and `x-central-bot-secret` only |
-| Gate | entitlement, then `checkMessageQuota` | `event_id` claimed with the spend. A retry of that id does not spend again. |
-| Success body | chat reply plus `quota` | the same `ai_session` body as `GET /api/v2/usage` |
+| Gate | entitlement, then `checkMessageQuota` | `event_id` claimed with the spend. A retry after `applied` does not spend again. `exhausted` and `not_provisioned` release the id. |
+| Success body | chat reply plus `quota` | `ai_session` plus `outcome` (`applied`, `replayed`, `exhausted`, `not_provisioned`) |
 
 Mindbloom owns the company's end date and syncs sessions (`set_base`, `add_topup`, `reset_base`). A lapsed company is closed here when Mindbloom resets the base. SaaS does not read that date on v2. No session row returns `ai_session: null`. A row with nothing left returns `remaining: 0` and spends nothing.
 

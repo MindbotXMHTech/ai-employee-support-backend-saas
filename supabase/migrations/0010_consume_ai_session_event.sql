@@ -1,6 +1,7 @@
--- One chat spend per event_id. The claim and the consume commit together,
--- so a timeout after commit followed by a retry does not spend a second unit.
--- consume_ai_session itself is still not an idempotency key.
+-- One successful chat spend per event_id. The claim and the consume commit together,
+-- so a timeout after a successful spend followed by a retry does not spend a second unit.
+-- A spend that does not happen releases the claim in the same transaction, so a later
+-- retry can spend once a balance exists. consume_ai_session itself is still not an idempotency key.
 
 create table public.processed_ai_session_consumes (
   event_id text primary key,
@@ -128,6 +129,12 @@ begin
     base_used := v_consumed.base_used;
     topup_balance := v_consumed.topup_balance;
   end if;
+
+  if outcome = 'not_provisioned' or outcome = 'exhausted' then
+    delete from public.processed_ai_session_consumes
+    where event_id = p_event_id;
+  end if;
+
   return next;
 end;
 $$;

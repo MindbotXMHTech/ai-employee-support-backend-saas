@@ -14,11 +14,17 @@ type CentralBotV2ErrorBody = {
   };
 };
 
+export type CentralBotV2ChatSpendOutcome = "applied" | "replayed" | "exhausted" | "not_provisioned";
+
+export type CentralBotV2ChatSuccessBody = AiSessionUsageBody & {
+  outcome: CentralBotV2ChatSpendOutcome;
+};
+
 export type CentralBotV2ChatHttpResult =
   | { statusCode: 404 | 409; body: CentralBotV2ErrorBody }
-  | { statusCode: 200; body: AiSessionUsageBody };
+  | { statusCode: 200; body: CentralBotV2ChatSuccessBody };
 
-/** Spends at most one AI session for this event_id and returns the same balance body as GET /api/v2/usage. */
+/** Spends at most one AI session for this event_id. outcome says whether this event paid. */
 export async function executeCentralBotV2Chat(
   companyCode: string,
   eventId: string,
@@ -48,11 +54,18 @@ export async function executeCentralBotV2Chat(
   if (spent.outcome === "not_provisioned") {
     return {
       statusCode: 200,
-      body: { ai_session: null, message: AI_SESSION_NOT_PROVISIONED_MESSAGE },
+      body: {
+        ai_session: null,
+        message: AI_SESSION_NOT_PROVISIONED_MESSAGE,
+        outcome: "not_provisioned",
+      },
     };
   }
 
-  return { statusCode: 200, body: toAiSessionUsageBody(countersOf(spent)) };
+  return {
+    statusCode: 200,
+    body: { ...toAiSessionUsageBody(countersOf(spent)), outcome: spent.outcome },
+  };
 }
 
 function countersOf(spent: AiSessionConsumeEventResult) {

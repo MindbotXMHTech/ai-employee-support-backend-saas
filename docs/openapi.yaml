@@ -163,10 +163,12 @@ paths:
       summary: Spend one AI session for a company
       description: |
         Names the company with `company_code`, the same way as `GET /api/v2/usage`.
-        Auth is `x-central-bot-secret` only. `event_id` is claimed in the same transaction as the spend,
-        so a retry of that id returns the current balance and does not spend a second unit. The same id
-        for another company returns 409. The body matches `GET /api/v2/usage`. This route does not call
-        the model. `POST /api/v1/chat` is unchanged.
+        Auth is `x-central-bot-secret` only. `event_id` is claimed in the same transaction as the spend.
+        `outcome: applied` spent one session. `outcome: replayed` means that id already spent and this
+        call does not spend again. `outcome: exhausted` and `outcome: not_provisioned` did not spend and
+        release the id, so a later retry can spend. The same id for another company returns 409.
+        `GET /api/v2/usage` stays a balance without `outcome`. This route does not call the model.
+        `POST /api/v1/chat` is unchanged.
       security:
         - CentralBotSecret: []
       requestBody:
@@ -183,11 +185,28 @@ paths:
                   event_id: chat-evt-1
       responses:
         "200":
-          description: Session balance after the spend, or the current balance when nothing was spent.
+          description: Session balance plus whether this event_id paid for a session.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/UsageV2Response"
+                $ref: "#/components/schemas/ChatV2Response"
+              examples:
+                applied:
+                  summary: This call spent the last session
+                  value:
+                    ai_session:
+                      base_remaining: 0
+                      topup_balance: 0
+                      remaining: 0
+                    outcome: applied
+                exhausted:
+                  summary: Nothing left, so this call did not spend
+                  value:
+                    ai_session:
+                      base_remaining: 0
+                      topup_balance: 0
+                      remaining: 0
+                    outcome: exhausted
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
@@ -1166,7 +1185,7 @@ components:
           type: string
           minLength: 1
           maxLength: 200
-          description: Idempotency key for this spend. A retry with the same id does not spend again.
+          description: Idempotency key for one successful spend. A retry after applied does not spend again. A retry after exhausted or not_provisioned can spend.
 
     ChatSuccessResponse:
       type: object
@@ -1344,6 +1363,24 @@ components:
           type: integer
         remaining:
           type: integer
+
+    ChatV2Response:
+      type: object
+      required: [ai_session, outcome]
+      properties:
+        ai_session:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/AiSessionSnapshot"
+        message:
+          type: string
+          example: Session has not been provisioned yet
+        outcome:
+          type: string
+          enum: [applied, replayed, exhausted, not_provisioned]
+          description: >
+            applied spent one session for this event_id. replayed means this event_id already
+            spent. exhausted and not_provisioned did not spend and released the event_id.
 
     UsageV2Response:
       type: object
