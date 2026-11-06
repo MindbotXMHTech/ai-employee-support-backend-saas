@@ -167,13 +167,7 @@ To test chat in Postman:
 5. Run `1. Register LINE User With Company Code`.
 6. Run `3. Chat - Linked User` to test normal chat.
 
-For a simplified LINE-shaped flow, use `/api/v2/chat` with:
-
-- `user_id`
-- `message`
-- `company_code`
-
-Use `x-central-bot-secret` as usual. If the client cannot set that header, send **`workflow_token`** in the same JSON body (v2 only).
+`POST /api/v2/chat` spends one AI session. Send `company_code` and `event_id` with header `x-central-bot-secret`. It does not accept `workflow_token`, `user_id`, or `message`, and it does not call the model.
 
 ## Environment Variables
 
@@ -220,7 +214,7 @@ Notes:
 - `MINDBLOOM_PROVISION_URL` / `MINDBLOOM_PROVISION_SECRET` are server-only; used to notify Mindbloom after tenant onboarding. Omit both to disable.
 - `TENANT_PROVISION_SECRET` enables `POST /api/v1/partner/tenants`; send the same value in header **`x-tenant-provision-secret`**. Omit to keep that route disabled (`503`). Do not reuse in browser bundles.
 - `PLATFORM_SETUP_SECRET`, when set, requires `setup_secret` in JSON or `x-platform-setup-secret` for first-time `/api/setup/platform-admin`; generate with **`npm run secrets:platform-setup`**. Omit locally if you rely on trusted networks only.
-- `API_KEY_SECRET` — HMAC secret for **legacy tenant API keys** (`x-api-key`) and **workflow HTTP tokens** (`workflow_token` on `POST /api/v2/chat`). **Required in production** (server boot fails without it via `src/instrumentation.ts`). **Required in local dev** whenever you create or validate those keys/tokens (admin UI or `POST /api/admin/workflow-tokens` / `POST /api/admin/api-keys`). There is **no default**; unset values fail closed at hash time. Generate with `openssl rand -hex 32` and store only in `.env.local` or your host secrets — never commit. Central bot auth (`x-central-bot-secret`) does not use this variable unless you also use API keys or workflow tokens.
+- `API_KEY_SECRET` — HMAC secret for **legacy tenant API keys** (`x-api-key`) and stored workflow HTTP token hashes. **Required in production** (server boot fails without it via `src/instrumentation.ts`). **Required in local dev** whenever you create or validate those keys or tokens (admin UI or `POST /api/admin/workflow-tokens` / `POST /api/admin/api-keys`). There is **no default**; unset values fail closed at hash time. Generate with `openssl rand -hex 32` and store only in `.env.local` or your host secrets — never commit. `POST /api/v2/chat` does not read `workflow_token`. Central bot auth (`x-central-bot-secret`) does not use this variable unless you also use API keys or workflow tokens.
 - Model values can also be controlled per tenant by Platform Admin in the UI.
 
 ### Deployment (Vercel / production)
@@ -523,20 +517,19 @@ What gets stored:
 POST /api/v1/chat
 ```
 
-For HTTP clients that **cannot set custom headers** (some workflow builders), send a **tenant-scoped `workflow_token`** in the JSON body of **`POST /api/v2/chat`** together with `user_id`, `message`, and `company_code`. Create tokens in the admin UI (`/dashboard/workflow-tokens` or Platform Admin → tenant → **Workflow HTTP**) or via `POST /api/admin/workflow-tokens`; the raw value is returned once as `rawToken`. Do not put `CENTRAL_BOT_SECRET` in JSON bodies.
+`POST /api/v2/chat` spends one AI session and does not return a model reply. Auth is `x-central-bot-secret` only. Do not put `CENTRAL_BOT_SECRET` or `workflow_token` in the JSON body.
 
 ```bash
 curl -X POST http://localhost:4000/api/v2/chat \
+  -H "x-central-bot-secret: $CENTRAL_BOT_SECRET" \
   -H "content-type: application/json" \
   -d '{
-    "workflow_token": "wf_live_...",
-    "user_id": "Uxxxxxxxxxxxxxxxx",
-    "message": "ลาป่วยได้กี่วัน",
-    "company_code": "ABCD123"
+    "company_code": "ABCD123",
+    "event_id": "chat-evt-1"
   }'
 ```
 
-`company_code` is required on first contact for that `user_id` unless the user is already linked; the code must belong to the same tenant as the workflow token.
+`outcome: applied` means this `event_id` spent one session. `outcome: replayed` means that id already spent. `outcome: exhausted` and `outcome: not_provisioned` did not spend, and the same `event_id` can be retried.
 
 Request after registration (central bot, header auth):
 
@@ -719,7 +712,7 @@ Integrate LINE by running a **separate adapter** (your own service, LINE Messagi
 2. Extract LINE `userId` as `external_user_id`.
 3. Use `channel = "line"`.
 4. If user sends a company code or registration command, call `/api/v1/register`.
-5. For normal messages, call `/api/v1/chat` with `x-central-bot-secret`, or `/api/v2/chat` with the same header. If the HTTP client cannot set headers, call **`POST /api/v2/chat`** with **`workflow_token`** in the JSON (not v1).
+5. For a model reply, call `/api/v1/chat` with `x-central-bot-secret`. `POST /api/v2/chat` only spends one AI session for `company_code` and `event_id` and does not return `reply`.
 6. Send `reply` from API response back to LINE.
 7. If `handoff_required` or `handoff.enabled` is true, show handoff URL/button/message in LINE UX if supported.
 
@@ -834,7 +827,7 @@ Latest verification after recent changes:
 
 ## Security Notes
 
-- Some workflow tools cannot attach bot headers. Send a per-tenant **`workflow_token`** in the JSON body of **`POST /api/v2/chat`** (create in **Workflow HTTP** admin UI or `POST /api/admin/workflow-tokens`). Never put `CENTRAL_BOT_SECRET` or `TENANT_PROVISION_SECRET` in browser or untrusted JSON.
+- `POST /api/v2/chat` accepts `x-central-bot-secret` only. Never put `CENTRAL_BOT_SECRET` or `TENANT_PROVISION_SECRET` in browser or untrusted JSON.
 - Never expose `SUPABASE_SERVICE_ROLE_KEY`, `CENTRAL_BOT_SECRET`, `CRON_SECRET`, `MINDBLOOM_PROVISION_SECRET`, `TENANT_PROVISION_SECRET`, `PLATFORM_SETUP_SECRET`, or `API_KEY_SECRET` in browser code.
 - Only variables prefixed with `NEXT_PUBLIC_` are safe for browser exposure.
 - Bot-facing central endpoints must be called from trusted bot backend code, not directly from LINE client/user devices.

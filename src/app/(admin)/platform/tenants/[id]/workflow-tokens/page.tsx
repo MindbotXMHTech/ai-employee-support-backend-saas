@@ -29,14 +29,14 @@ export default async function PlatformTenantWorkflowTokensPage({ params }: { par
       </Button>
       <PageHeader
         title="Workflow HTTP tokens"
-        description="Tokens for automation tools that cannot send x-central-bot-secret as a header. Use workflow_token in POST /api/v2/chat JSON."
+        description="Stored per tenant. POST /api/v2/chat does not accept these tokens. That route requires the x-central-bot-secret header."
       />
       <PlatformTenantNav tenantId={id} active="/workflow-tokens" />
       <Card>
         <CardHeader>
           <CardTitle>Tokens for this tenant</CardTitle>
           <CardDescription>
-            Create a token, copy it once into your workflow (e.g. Make, n8n). Revoke if it leaks. Same tenant isolation rules as company codes apply when linking users.
+            Create a token and copy it once. Revoke it if it leaks. POST /api/v2/chat does not read this token.
           </CardDescription>
         </CardHeader>
         <CardContent>

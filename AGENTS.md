@@ -35,7 +35,7 @@ The bot is central, but all tenant data is separated by `tenant_id`.
 
 - The intended bot integration uses `x-central-bot-secret` with `CENTRAL_BOT_SECRET`.
 - `POST /api/v1/chat` auth: `x-central-bot-secret` (central bot) **or** legacy `x-api-key` (per-tenant API key). No JSON-body secrets; never put `CENTRAL_BOT_SECRET` in JSON bodies.
-- `POST /api/v2/chat` (LINE-shaped body: `user_id`, `message`, `company_code`): `x-central-bot-secret` **or** optional JSON `workflow_token` for clients that cannot set headers (tenant-scoped; create in Workflow HTTP admin). Strip `workflow_token` before `handleChatRequest`.
+- `POST /api/v2/chat` spends one AI session. Body is `company_code` and `event_id`. Auth is `x-central-bot-secret` only. It does not accept `workflow_token`, `user_id`, or `message`, and it does not call the model. The 200 body includes `outcome`.
 - Do not design new tenant-specific bot API key flows unless explicitly requested. Legacy `x-api-key` exists only for compatibility.
 - Never trust `tenant_id` from employee chat clients. Resolve tenant server-side from `employee_tenant_links` or `company_code`.
 - Tenant-scoped data must always include/filter by `tenant_id`.
@@ -92,7 +92,7 @@ Main bot-facing endpoints:
 
 - `POST /api/v1/register` - link `line_user_id` or `external_user_id` to a tenant using `company_code`
 - `POST /api/v1/chat` - send employee message and receive structured bot response (header auth only)
-- `POST /api/v2/chat` - simplified LINE-oriented chat; same orchestration after tenant resolve; supports `workflow_token` in JSON when headers are impossible
+- `POST /api/v2/chat` - spend one AI session for `company_code` and `event_id`; header `x-central-bot-secret` only
 - `GET /api/v1/config` - read tenant bot config after tenant resolution
 - `GET /api/v1/usage` - read tenant quota/usage after tenant resolution
 - `POST /api/v1/partner/tenants` - server-to-server tenant provision (`x-tenant-provision-secret`; disabled if env unset)
@@ -104,7 +104,7 @@ x-central-bot-secret: <CENTRAL_BOT_SECRET>
 
 Use `channel = "line"` and LINE `userId` as `external_user_id`.
 
-There is no in-repo LINE Messaging webhook route; an external adapter must call these APIs with `x-central-bot-secret`, or use `POST /api/v2/chat` with `workflow_token` in the JSON only when headers are impossible.
+There is no in-repo LINE Messaging webhook route. An external adapter calls these APIs with `x-central-bot-secret`. `POST /api/v2/chat` does not accept `workflow_token`.
 
 ## Mindbloom Partner Sync (MB-896)
 

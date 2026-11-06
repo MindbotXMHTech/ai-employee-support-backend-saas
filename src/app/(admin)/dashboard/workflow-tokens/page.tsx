@@ -16,7 +16,7 @@ export default async function DashboardWorkflowTokensPage() {
     <>
       <PageHeader
         title="Workflow HTTP tokens"
-        description="For tools that only allow a JSON body (no custom headers). Send workflow_token with POST /api/v2/chat."
+        description="Stored for this company. POST /api/v2/chat does not accept these tokens. That route requires the x-central-bot-secret header."
       />
       <Card>
         <CardHeader>
