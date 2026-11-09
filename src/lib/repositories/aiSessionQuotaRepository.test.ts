@@ -230,6 +230,63 @@ describe("aiSessionQuotaRepository", () => {
     });
   });
 
+  it("rejects a consume payload that is not a list of rows", async () => {
+    const rpc = vi.fn(async () => ({ data: { outcome: "consumed_base" }, error: null }));
+    const { consumeSession } = await loadRepository(rpc);
+
+    await expect(consumeSession(TENANT_ID)).rejects.toThrow("Unexpected AI session quota RPC payload");
+  });
+
+  it("rejects two consume rows", async () => {
+    const row = { outcome: "consumed_base", base_limit: 1, base_used: 1, topup_balance: 0 };
+    const rpc = vi.fn(async () => ({ data: [row, row], error: null }));
+    const { consumeSession } = await loadRepository(rpc);
+
+    await expect(consumeSession(TENANT_ID)).rejects.toThrow("Expected one AI session quota row");
+  });
+
+  it("rejects a negative session counter", async () => {
+    const rpc = vi.fn(async () => ({
+      data: [{ outcome: "consumed_base", base_limit: 1, base_used: -1, topup_balance: 0 }],
+      error: null,
+    }));
+    const { consumeSession } = await loadRepository(rpc);
+
+    await expect(consumeSession(TENANT_ID)).rejects.toThrow("Invalid base_used");
+  });
+
+  it("rejects an unknown consume outcome", async () => {
+    const rpc = vi.fn(async () => ({
+      data: [{ outcome: "spent", base_limit: 1, base_used: 1, topup_balance: 0 }],
+      error: null,
+    }));
+    const { consumeSession } = await loadRepository(rpc);
+
+    await expect(consumeSession(TENANT_ID)).rejects.toThrow("Invalid AI session consume outcome");
+  });
+
+  it("rejects a quota row without updated_at", async () => {
+    const rpc = vi.fn(async () => ({
+      data: [{ base_limit: 1, base_used: 0, topup_balance: 0 }],
+      error: null,
+    }));
+    const { getQuota } = await loadRepository(rpc);
+
+    await expect(getQuota(TENANT_ID)).rejects.toThrow("Invalid updated_at");
+  });
+
+  it("rejects an unknown chat spend outcome", async () => {
+    const rpc = vi.fn(async () => ({
+      data: [{ outcome: "spent", base_limit: 1, base_used: 0, topup_balance: 0 }],
+      error: null,
+    }));
+    const { consumeSessionEvent } = await loadRepository(rpc);
+
+    await expect(
+      consumeSessionEvent({ companyCode: "ABC503", eventId: "evt-1" }),
+    ).rejects.toThrow("Invalid AI session consume event outcome");
+  });
+
   it("throws on an unknown partner op outcome", async () => {
     const rpc = vi.fn(async () => ({
       data: [{ outcome: "maybe", base_limit: 0, base_used: 0, topup_balance: 0 }],
