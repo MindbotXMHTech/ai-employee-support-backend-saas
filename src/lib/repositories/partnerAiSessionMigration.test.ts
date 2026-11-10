@@ -50,13 +50,15 @@ describe("0009_partner_ai_session_ops", () => {
 
   it("replays a repeated event only when the company, op, and amount match", () => {
     const claim = applyOp.indexOf("on conflict on constraint processed_partner_events_pkey do nothing");
+    const sameTenant = applyOp.indexOf("v_stored.tenant_id = v_tenant");
     const sameOp = applyOp.indexOf("v_stored.op = p_op");
     const sameAmount = applyOp.indexOf("v_stored.amount is not distinct from p_amount");
     const replay = applyOp.indexOf("outcome := 'replayed'");
     const conflict = applyOp.indexOf("outcome := 'event_id_conflict'");
 
     expect(claim).toBeGreaterThan(-1);
-    expect(sameOp).toBeGreaterThan(claim);
+    expect(sameTenant).toBeGreaterThan(claim);
+    expect(sameOp).toBeGreaterThan(sameTenant);
     expect(sameAmount).toBeGreaterThan(sameOp);
     expect(replay).toBeGreaterThan(sameAmount);
     expect(conflict).toBeGreaterThan(replay);
