@@ -49,6 +49,39 @@ describe("0008_tenant_ai_session_quota", () => {
     expect(functionSql(sql, "consume_ai_session").toLowerCase()).toMatch(/\bfor\s+update\b/);
   });
 
+  it("spends base before topup and skips the write when nothing remains", () => {
+    const body = functionSql(sql, "consume_ai_session").replace(/--.*$/gm, "").toLowerCase();
+    const baseBranch = body.indexOf("if current_row.base_used < current_row.base_limit then");
+    const spendBase = body.indexOf("decision := 'consumed_base'");
+    const incrementBase = body.indexOf("current_row.base_used := current_row.base_used + 1");
+    const topupBranch = body.indexOf("elsif current_row.topup_balance > 0 then");
+    const spendTopup = body.indexOf("decision := 'consumed_topup'");
+    const decrementTopup = body.indexOf("current_row.topup_balance := current_row.topup_balance - 1");
+    const exhausted = body.indexOf("decision := 'exhausted'");
+    const writeGate = body.indexOf("if decision <> 'exhausted' then");
+    const write = body.indexOf("update public.tenant_ai_session_quota");
+
+    expect(baseBranch).toBeGreaterThan(-1);
+    expect(spendBase).toBeGreaterThan(baseBranch);
+    expect(incrementBase).toBeGreaterThan(spendBase);
+    expect(topupBranch).toBeGreaterThan(incrementBase);
+    expect(spendTopup).toBeGreaterThan(topupBranch);
+    expect(decrementTopup).toBeGreaterThan(spendTopup);
+    expect(exhausted).toBeGreaterThan(decrementTopup);
+    expect(writeGate).toBeGreaterThan(exhausted);
+    expect(write).toBeGreaterThan(writeGate);
+  });
+
+  it("returns exhausted without inserting a quota row when the tenant has none", () => {
+    const body = functionSql(sql, "consume_ai_session").replace(/--.*$/gm, "").toLowerCase();
+    const missing = body.indexOf("if not found then");
+    const exhausted = body.indexOf("outcome := 'exhausted'");
+
+    expect(missing).toBeGreaterThan(-1);
+    expect(exhausted).toBeGreaterThan(missing);
+    expect(body.slice(missing, exhausted)).not.toMatch(/\binsert\s+into\b/);
+  });
+
   it("does not assign topup_balance from set_ai_session_base or reset_ai_session_base", () => {
     expect(assignsTopupBalance(functionSql(sql, "add_ai_session_topup"))).toBe(true);
     expect(assignsTopupBalance(functionSql(sql, "set_ai_session_base"))).toBe(false);

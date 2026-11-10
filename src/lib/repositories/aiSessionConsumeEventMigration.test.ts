@@ -31,6 +31,33 @@ describe("0010_consume_ai_session_event", () => {
     expect(quotedValues(match?.[1])).toEqual([...AI_SESSION_CONSUME_EVENT_OUTCOMES]);
   });
 
+  it("rejects a blank event id before looking up a company", () => {
+    const raise = fn.indexOf("raise exception 'event_id is required'");
+    const lookup = fn.indexOf("from public.tenant_company_codes");
+
+    expect(raise).toBeGreaterThan(-1);
+    expect(fn).toContain("errcode = '22023'");
+    expect(lookup).toBeGreaterThan(raise);
+  });
+
+  it("returns company_code_not_found before claiming the event", () => {
+    const missing = fn.indexOf("outcome := 'company_code_not_found'");
+    const claim = fn.indexOf("insert into public.processed_ai_session_consumes");
+
+    expect(missing).toBeGreaterThan(-1);
+    expect(claim).toBeGreaterThan(missing);
+  });
+
+  it("returns event_id_conflict when the stored event belongs to another tenant", () => {
+    const distinct = fn.indexOf("v_stored.tenant_id is distinct from v_tenant");
+    const conflict = fn.indexOf("outcome := 'event_id_conflict'");
+    const spend = fn.indexOf("public.consume_ai_session(");
+
+    expect(distinct).toBeGreaterThan(-1);
+    expect(conflict).toBeGreaterThan(distinct);
+    expect(spend).toBeGreaterThan(conflict);
+  });
+
   it("claims the event before consume_ai_session", () => {
     const claim = fn.indexOf("insert into public.processed_ai_session_consumes");
     const spend = fn.indexOf("public.consume_ai_session(");
