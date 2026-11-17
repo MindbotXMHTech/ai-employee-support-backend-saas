@@ -75,6 +75,15 @@ BEGIN
   );
   SELECT topup_used INTO n FROM public.tenant_ai_session_quota WHERE tenant_id = v_a;
   PERFORM pg_temp.quota_assert(n = 5, format('topup_used after spending 5 topup is %s', n));
+  SELECT count(*) INTO n FROM public.ai_session_events
+  WHERE tenant_id = v_a AND event_id LIKE 'direct:%' AND op = 'set_base' AND outcome = 'applied';
+  PERFORM pg_temp.quota_assert(n = 1, format('direct set_base stored %s rows', n));
+  SELECT count(*) INTO n FROM public.ai_session_events
+  WHERE tenant_id = v_a AND event_id LIKE 'direct:%' AND op = 'add_topup' AND delta = 5;
+  PERFORM pg_temp.quota_assert(n = 1, format('direct add_topup stored %s rows', n));
+  SELECT count(*), sum(delta) INTO n, m FROM public.ai_session_events
+  WHERE tenant_id = v_a AND event_id LIKE 'direct:%' AND op = 'consume';
+  PERFORM pg_temp.quota_assert(n = 7 AND m = -7, format('direct consumes stored %s rows delta %s', n, m));
 
   SELECT * INTO r FROM public.consume_ai_session_event('NOBODY', 'mb1312-unknown');
   PERFORM pg_temp.quota_assert(
@@ -136,6 +145,9 @@ BEGIN
   );
   SELECT count(*) INTO n FROM public.ai_session_events WHERE event_id = 'mb1312-topup';
   PERFORM pg_temp.quota_assert(n = 1, format('first topup stored %s rows', n));
+  SELECT count(*) INTO n FROM public.ai_session_events
+  WHERE tenant_id = v_a AND event_id LIKE 'direct:%' AND op = 'add_topup';
+  PERFORM pg_temp.quota_assert(n = 1, format('partner topup was also stored as %s direct rows', n));
   SELECT * INTO r FROM public.ai_session_events WHERE event_id = 'mb1312-topup';
   PERFORM pg_temp.quota_assert(
     r.tenant_id = v_a AND r.op = 'add_topup' AND r.amount = 100 AND r.delta = 100

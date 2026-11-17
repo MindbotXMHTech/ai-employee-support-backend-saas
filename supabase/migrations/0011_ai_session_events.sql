@@ -219,6 +219,7 @@ begin
     return;
   end if;
 
+  perform pg_catalog.set_config('app.ai_session_event_logged', 'on', true);
   perform public.upsert_ai_session_quota(v_tenant);
 
   select q.base_limit, q.base_used, q.topup_balance
@@ -240,6 +241,8 @@ begin
     into v_after
     from public.reset_ai_session_base(v_tenant, p_amount) f;
   end if;
+
+  perform pg_catalog.set_config('app.ai_session_event_logged', '', true);
 
   select q.topup_used into v_topup_used
   from public.tenant_ai_session_quota q
@@ -399,9 +402,11 @@ begin
     return;
   end if;
 
+  perform pg_catalog.set_config('app.ai_session_event_logged', 'on', true);
   select f.outcome, f.base_limit, f.base_used, f.topup_balance
   into v_consumed
   from public.consume_ai_session(v_tenant) f;
+  perform pg_catalog.set_config('app.ai_session_event_logged', '', true);
 
   base_limit := v_consumed.base_limit;
   base_used := v_consumed.base_used;
@@ -428,3 +433,65 @@ $$;
 
 revoke all on function public.consume_ai_session_event(text, text) from public, anon, authenticated;
 grant execute on function public.consume_ai_session_event(text, text) to service_role;
+
+-- A quota change made outside the two logging functions above (a direct call to
+-- consume_ai_session, set_ai_session_base, add_ai_session_topup, reset_ai_session_base, or
+-- upsert_ai_session_quota) still leaves a history row, under a generated event_id.
+-- The logging functions set app.ai_session_event_logged for the transaction while they
+-- change the quota, so they are not recorded twice.
+create or replace function private.log_direct_ai_session_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_op text;
+begin
+  if coalesce(pg_catalog.current_setting('app.ai_session_event_logged', true), '') <> '' then
+    return new;
+  end if;
+
+  if tg_op = 'INSERT' then
+    v_op := case
+      when new.topup_balance > 0 then 'add_topup'
+      when new.base_limit > 0 then 'set_base'
+    end;
+  else
+    v_op := case
+      when new.topup_used > old.topup_used or new.base_used > old.base_used then 'consume'
+      when new.base_used < old.base_used then 'reset_base'
+      when new.topup_balance > old.topup_balance then 'add_topup'
+      when new.base_limit <> old.base_limit then 'set_base'
+    end;
+  end if;
+
+  if v_op is null then
+    return new;
+  end if;
+
+  insert into public.ai_session_events
+    (event_id, tenant_id, op, outcome, amount, delta, base_limit, base_used, topup_balance, topup_used)
+  values (
+    'direct:' || gen_random_uuid()::text,
+    new.tenant_id,
+    v_op,
+    'applied',
+    null,
+    (greatest(new.base_limit - new.base_used, 0)::bigint + new.topup_balance)
+      - case when tg_op = 'INSERT' then 0
+        else greatest(old.base_limit - old.base_used, 0)::bigint + old.topup_balance end,
+    new.base_limit,
+    new.base_used,
+    new.topup_balance,
+    new.topup_used
+  );
+  return new;
+end;
+$$;
+
+revoke all on function private.log_direct_ai_session_change() from public, anon, authenticated, service_role;
+
+create trigger log_direct_ai_session_change
+  after insert or update on public.tenant_ai_session_quota
+  for each row execute function private.log_direct_ai_session_change();

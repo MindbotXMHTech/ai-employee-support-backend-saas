@@ -60,4 +60,14 @@ describe("0011_ai_session_events", () => {
       /remaining bigint generated always as \(greatest\(base_limit - base_used, 0\)::bigint \+ topup_balance\) stored/,
     );
   });
+
+  it("logs direct quota changes with a trigger that the logging functions switch off", () => {
+    expect(lower).toMatch(
+      /create trigger log_direct_ai_session_change\s+after insert or update on public\.tenant_ai_session_quota/,
+    );
+    const on = lower.match(/set_config\('app\.ai_session_event_logged', 'on', true\)/g) ?? [];
+    const off = lower.match(/set_config\('app\.ai_session_event_logged', '', true\)/g) ?? [];
+    expect(on).toHaveLength(2);
+    expect(off).toHaveLength(2);
+  });
 });
