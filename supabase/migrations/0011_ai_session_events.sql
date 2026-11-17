@@ -68,7 +68,7 @@ end;
 $$;
 
 -- One history row per call, any number per event_id. Chat spends join it as op = 'consume'.
--- Every resolved call is written with its outcome; only the first 'applied' row of an event_id
+-- Every call that resolves a company is written with its outcome, conflicts included; only the first 'applied' row of an event_id
 -- decides replay versus conflict, so an exhausted or unprovisioned call can be retried under
 -- the same event_id. It replaces processed_partner_events (0009), which keyed on event_id alone.
 create table public.ai_session_events (
@@ -78,7 +78,7 @@ create table public.ai_session_events (
   op text not null constraint ai_session_events_op_check
     check (op in ('set_base', 'add_topup', 'reset_base', 'consume')),
   outcome text not null constraint ai_session_events_outcome_check
-    check (outcome in ('applied', 'replayed', 'exhausted', 'not_provisioned')),
+    check (outcome in ('applied', 'replayed', 'exhausted', 'not_provisioned', 'event_id_conflict')),
   amount integer null,
   delta bigint not null,
   base_limit integer not null,
@@ -207,6 +207,13 @@ begin
       values (p_event_id, v_tenant, p_op, 'replayed', p_amount, 0, base_limit, base_used, topup_balance, v_topup_used);
     else
       outcome := 'event_id_conflict';
+
+      insert into public.ai_session_events
+        (event_id, tenant_id, op, outcome, amount, delta, base_limit, base_used, topup_balance, topup_used)
+      select p_event_id, v_tenant, p_op, 'event_id_conflict', p_amount, 0,
+        coalesce(q.base_limit, 0), coalesce(q.base_used, 0), coalesce(q.topup_balance, 0), coalesce(q.topup_used, 0)
+      from (select 1) s
+      left join public.tenant_ai_session_quota q on q.tenant_id = v_tenant;
     end if;
     return next;
     return;
@@ -361,6 +368,11 @@ begin
 
   if v_stored.id is not null and (v_stored.tenant_id <> v_tenant or v_stored.op <> 'consume') then
     outcome := 'event_id_conflict';
+    insert into public.ai_session_events
+      (event_id, tenant_id, op, outcome, amount, delta, base_limit, base_used, topup_balance, topup_used)
+    values (p_event_id, v_tenant, 'consume', 'event_id_conflict', null, 0,
+      coalesce(v_quota.base_limit, 0), coalesce(v_quota.base_used, 0),
+      coalesce(v_quota.topup_balance, 0), coalesce(v_quota.topup_used, 0));
     return next;
     return;
   end if;

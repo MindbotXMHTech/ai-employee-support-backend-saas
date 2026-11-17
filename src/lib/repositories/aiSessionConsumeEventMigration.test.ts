@@ -66,7 +66,7 @@ describe("consume_ai_session_event in 0011_ai_session_events", () => {
   });
 
   it("writes a history row with its outcome for every resolved call", () => {
-    for (const outcome of ["applied", "replayed", "exhausted", "not_provisioned"]) {
+    for (const outcome of ["applied", "replayed", "exhausted", "not_provisioned", "event_id_conflict"]) {
       expect(fn).toMatch(new RegExp(`values \\(p_event_id, v_tenant, 'consume', '${outcome}'`));
     }
   });

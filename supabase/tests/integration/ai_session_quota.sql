@@ -125,6 +125,9 @@ BEGIN
   );
   SELECT base_used INTO n FROM public.tenant_ai_session_quota WHERE tenant_id = v_b;
   PERFORM pg_temp.quota_assert(n = 1, format('conflict changed the first tenant used to %s', n));
+  SELECT count(*) INTO n FROM public.ai_session_events
+  WHERE event_id = 'mb1312-empty' AND tenant_id = v_a AND outcome = 'event_id_conflict' AND delta = 0;
+  PERFORM pg_temp.quota_assert(n = 1, format('cross-tenant conflict stored %s rows for the caller', n));
 
   SELECT * INTO r FROM public.apply_partner_ai_session_op('MB1312QA', 'add_topup', 100, 'mb1312-topup', NULL, NULL);
   PERFORM pg_temp.quota_assert(
@@ -161,7 +164,10 @@ BEGIN
   SELECT topup_balance INTO n FROM public.tenant_ai_session_quota WHERE tenant_id = v_a;
   PERFORM pg_temp.quota_assert(n = 100, format('conflicting op changed topup to %s', n));
   SELECT count(*) INTO n FROM public.ai_session_events WHERE event_id = 'mb1312-topup';
-  PERFORM pg_temp.quota_assert(n = 2, format('conflicting op left %s rows', n));
+  PERFORM pg_temp.quota_assert(n = 3, format('conflicting op left %s rows', n));
+  SELECT count(*) INTO n FROM public.ai_session_events
+  WHERE event_id = 'mb1312-topup' AND outcome = 'event_id_conflict' AND op = 'set_base' AND amount = 100 AND delta = 0;
+  PERFORM pg_temp.quota_assert(n = 1, format('conflicting op stored %s conflict rows', n));
 
   SELECT * INTO r FROM public.apply_partner_ai_session_op('MB1312QA', 'set_base', 9, 'mb1312-base', NULL, NULL);
   PERFORM pg_temp.quota_assert(
