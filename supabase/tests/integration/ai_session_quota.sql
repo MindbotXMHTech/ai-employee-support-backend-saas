@@ -21,6 +21,7 @@ DECLARE
   v_b uuid := '13120000-0000-4000-8000-0000000000b1';
   r record;
   n integer;
+  m bigint;
   i integer;
 BEGIN
   INSERT INTO public.tenants (id, name, slug, plan, status)
@@ -72,6 +73,8 @@ BEGIN
     r.outcome = 'exhausted' AND r.base_used = 2 AND r.topup_balance = 0,
     format('empty balance returned %s used %s topup %s', r.outcome, r.base_used, r.topup_balance)
   );
+  SELECT topup_used INTO n FROM public.tenant_ai_session_quota WHERE tenant_id = v_a;
+  PERFORM pg_temp.quota_assert(n = 5, format('topup_used after spending 5 topup is %s', n));
 
   SELECT * INTO r FROM public.consume_ai_session_event('NOBODY', 'mb1312-unknown');
   PERFORM pg_temp.quota_assert(
@@ -92,14 +95,14 @@ BEGIN
     r.outcome = 'not_provisioned',
     format('unprovisioned returned %s', r.outcome)
   );
-  SELECT count(*) INTO n FROM public.processed_ai_session_consumes WHERE event_id = 'mb1312-none';
-  PERFORM pg_temp.quota_assert(n = 0, 'not_provisioned kept the claim');
+  SELECT count(*) INTO n FROM public.ai_session_events WHERE op = 'consume' AND outcome = 'applied' AND event_id = 'mb1312-none';
+  PERFORM pg_temp.quota_assert(n = 0, 'not_provisioned counted as applied');
 
   PERFORM public.set_ai_session_base(v_b, 0);
   SELECT * INTO r FROM public.consume_ai_session_event('MB1312QB', 'mb1312-empty');
   PERFORM pg_temp.quota_assert(r.outcome = 'exhausted', format('empty event returned %s', r.outcome));
-  SELECT count(*) INTO n FROM public.processed_ai_session_consumes WHERE event_id = 'mb1312-empty';
-  PERFORM pg_temp.quota_assert(n = 0, 'exhausted kept the claim');
+  SELECT count(*) INTO n FROM public.ai_session_events WHERE op = 'consume' AND outcome = 'applied' AND event_id = 'mb1312-empty';
+  PERFORM pg_temp.quota_assert(n = 0, 'exhausted counted as applied');
 
   PERFORM public.set_ai_session_base(v_b, 1);
   SELECT * INTO r FROM public.consume_ai_session_event('MB1312QB', 'mb1312-empty');
@@ -112,6 +115,8 @@ BEGIN
     r.outcome = 'replayed' AND r.base_used = 1,
     format('replay changed the balance: %s used %s', r.outcome, r.base_used)
   );
+  SELECT count(*), sum(delta) INTO n, m FROM public.ai_session_events WHERE op = 'consume' AND event_id = 'mb1312-empty';
+  PERFORM pg_temp.quota_assert(n = 3 AND m = -1, format('consume history rows %s delta sum %s', n, m));
 
   SELECT * INTO r FROM public.consume_ai_session_event('MB1312QA', 'mb1312-empty');
   PERFORM pg_temp.quota_assert(
@@ -126,11 +131,28 @@ BEGIN
     r.outcome = 'applied' AND r.topup_balance = 100,
     format('first topup returned %s topup %s', r.outcome, r.topup_balance)
   );
+  SELECT count(*) INTO n FROM public.ai_session_events WHERE event_id = 'mb1312-topup';
+  PERFORM pg_temp.quota_assert(n = 1, format('first topup stored %s rows', n));
+  SELECT * INTO r FROM public.ai_session_events WHERE event_id = 'mb1312-topup';
+  PERFORM pg_temp.quota_assert(
+    r.tenant_id = v_a AND r.op = 'add_topup' AND r.amount = 100 AND r.delta = 100
+      AND r.topup_balance = 100 AND r.remaining = 100,
+    format('first topup row %s amount %s delta %s topup %s remaining %s', r.op, r.amount, r.delta, r.topup_balance, r.remaining)
+  );
+
   SELECT * INTO r FROM public.apply_partner_ai_session_op('MB1312QA', 'add_topup', 100, 'mb1312-topup', NULL, NULL);
   PERFORM pg_temp.quota_assert(
     r.outcome = 'replayed' AND r.topup_balance = 100,
     format('repeated topup returned %s topup %s', r.outcome, r.topup_balance)
   );
+  SELECT count(*) INTO n FROM public.ai_session_events WHERE event_id = 'mb1312-topup';
+  PERFORM pg_temp.quota_assert(n = 2, format('repeated topup left %s rows', n));
+  SELECT count(*) INTO n FROM public.ai_session_events
+  WHERE event_id = 'mb1312-topup' AND delta = 0 AND remaining = 100;
+  PERFORM pg_temp.quota_assert(n = 1, format('repeated topup stored %s zero-delta rows', n));
+  SELECT topup_balance INTO n FROM public.tenant_ai_session_quota WHERE tenant_id = v_a;
+  PERFORM pg_temp.quota_assert(n = 100, format('repeated topup changed topup to %s', n));
+
   SELECT * INTO r FROM public.apply_partner_ai_session_op('MB1312QA', 'set_base', 100, 'mb1312-topup', NULL, NULL);
   PERFORM pg_temp.quota_assert(
     r.outcome = 'event_id_conflict' AND r.topup_balance = 0,
@@ -138,11 +160,20 @@ BEGIN
   );
   SELECT topup_balance INTO n FROM public.tenant_ai_session_quota WHERE tenant_id = v_a;
   PERFORM pg_temp.quota_assert(n = 100, format('conflicting op changed topup to %s', n));
+  SELECT count(*) INTO n FROM public.ai_session_events WHERE event_id = 'mb1312-topup';
+  PERFORM pg_temp.quota_assert(n = 2, format('conflicting op left %s rows', n));
 
   SELECT * INTO r FROM public.apply_partner_ai_session_op('MB1312QA', 'set_base', 9, 'mb1312-base', NULL, NULL);
   PERFORM pg_temp.quota_assert(
     r.outcome = 'applied' AND r.base_limit = 9 AND r.base_used = 2 AND r.topup_balance = 100,
     format('set_base returned %s limit %s used %s topup %s', r.outcome, r.base_limit, r.base_used, r.topup_balance)
+  );
+  SELECT * INTO r FROM public.ai_session_events WHERE event_id = 'mb1312-base';
+  PERFORM pg_temp.quota_assert(
+    r.op = 'set_base' AND r.amount = 9 AND r.delta = 7 AND r.base_limit = 9 AND r.base_used = 2
+      AND r.topup_balance = 100 AND r.remaining = 107,
+    format('set_base row %s amount %s delta %s limit %s used %s topup %s remaining %s',
+      r.op, r.amount, r.delta, r.base_limit, r.base_used, r.topup_balance, r.remaining)
   );
 
   UPDATE public.tenant_ai_session_quota SET base_used = 4 WHERE tenant_id = v_a;
@@ -151,6 +182,12 @@ BEGIN
     r.outcome = 'applied' AND r.base_used = 0 AND r.base_limit = 9 AND r.topup_balance = 100,
     format('reset without amount returned %s limit %s used %s topup %s', r.outcome, r.base_limit, r.base_used, r.topup_balance)
   );
+  SELECT * INTO r FROM public.ai_session_events WHERE event_id = 'mb1312-reset';
+  PERFORM pg_temp.quota_assert(
+    r.op = 'reset_base' AND r.amount IS NULL AND r.delta = 4 AND r.base_used = 0 AND r.base_limit = 9
+      AND r.remaining = 109,
+    format('reset row amount %s delta %s limit %s used %s remaining %s', r.amount, r.delta, r.base_limit, r.base_used, r.remaining)
+  );
 
   UPDATE public.tenant_ai_session_quota SET base_used = 3 WHERE tenant_id = v_a;
   SELECT * INTO r FROM public.apply_partner_ai_session_op('MB1312QA', 'reset_base', 4, 'mb1312-reset-limit', NULL, NULL);
@@ -158,6 +195,19 @@ BEGIN
     r.outcome = 'applied' AND r.base_used = 0 AND r.base_limit = 4 AND r.topup_balance = 100,
     format('reset with amount returned %s limit %s used %s topup %s', r.outcome, r.base_limit, r.base_used, r.topup_balance)
   );
+  SELECT * INTO r FROM public.ai_session_events WHERE event_id = 'mb1312-reset-limit';
+  PERFORM pg_temp.quota_assert(
+    r.op = 'reset_base' AND r.amount = 4 AND r.delta = -2 AND r.base_limit = 4 AND r.base_used = 0
+      AND r.remaining = 104,
+    format('reset limit row amount %s delta %s limit %s used %s remaining %s', r.amount, r.delta, r.base_limit, r.base_used, r.remaining)
+  );
+
+  INSERT INTO public.ai_session_events (event_id, tenant_id, op, outcome, amount, delta, base_limit, base_used, topup_balance, topup_used)
+  VALUES ('mb1312-multi', v_a, 'add_topup', 'applied', 1, 1, 0, 0, 1, 0);
+  INSERT INTO public.ai_session_events (event_id, tenant_id, op, outcome, amount, delta, base_limit, base_used, topup_balance, topup_used)
+  VALUES ('mb1312-multi', v_a, 'add_topup', 'replayed', 1, 0, 0, 0, 1, 0);
+  SELECT count(*) INTO n FROM public.ai_session_events WHERE event_id = 'mb1312-multi';
+  PERFORM pg_temp.quota_assert(n = 2, format('repeated event_id kept %s rows', n));
 END;
 $integration$;
 
