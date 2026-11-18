@@ -226,6 +226,28 @@ BEGIN
   VALUES ('mb1312-multi', v_a, 'add_topup', 'replayed', 1, 0, 0, 0, 1, 0);
   SELECT count(*) INTO n FROM public.ai_session_events WHERE event_id = 'mb1312-multi';
   PERFORM pg_temp.quota_assert(n = 2, format('repeated event_id kept %s rows', n));
+
+  SELECT base_used INTO n FROM public.tenant_ai_session_quota WHERE tenant_id = v_a;
+  BEGIN
+    PERFORM public.apply_partner_ai_session_op('MB1312QA', 'consume', NULL, 'mb1312-poison', NULL, NULL);
+    PERFORM pg_temp.quota_assert(false, 'partner consume op was accepted');
+  EXCEPTION
+    WHEN sqlstate '22023' THEN
+      NULL;
+  END;
+  SELECT base_used INTO i FROM public.tenant_ai_session_quota WHERE tenant_id = v_a;
+  PERFORM pg_temp.quota_assert(i = n, format('partner consume op changed base_used from %s to %s', n, i));
+
+  INSERT INTO public.tenants (id, name, slug, plan, status)
+  VALUES ('13120000-0000-4000-8000-0000000000c1', 'MB1312 quota C', 'mb1312-quota-c', 'trial', 'active');
+  PERFORM public.reset_ai_session_base('13120000-0000-4000-8000-0000000000c1', 8);
+  SELECT * INTO r
+  FROM public.ai_session_events
+  WHERE tenant_id = '13120000-0000-4000-8000-0000000000c1';
+  PERFORM pg_temp.quota_assert(
+    r.op = 'reset_base' AND r.delta = 8 AND r.base_limit = 8 AND r.base_used = 0,
+    format('direct reset stored %s delta %s limit %s used %s', r.op, r.delta, r.base_limit, r.base_used)
+  );
 END;
 $integration$;
 

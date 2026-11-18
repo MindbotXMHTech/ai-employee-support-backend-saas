@@ -42,13 +42,15 @@ describe("0011_ai_session_events", () => {
     expect(lower).not.toMatch(/primary key \(event_id\)/);
   });
 
-  it("does not use on conflict", () => {
-    expect(lower).not.toMatch(/\bon\s+conflict\b/);
+  it("does not claim an event with on conflict", () => {
+    const history = lower.slice(0, lower.indexOf("create or replace function public.set_ai_session_base"));
+    expect(history).not.toMatch(/\bon\s+conflict\b/);
   });
 
   it("has created_at and no updated_at", () => {
-    expect(lower).toMatch(/created_at timestamptz not null default now\(\)/);
-    expect(lower).not.toMatch(/\bupdated_at\b/);
+    const table = lower.match(/create table public\.ai_session_events \(([\s\S]*?)\n\);/);
+    expect(table?.[1]).toMatch(/created_at timestamptz not null default now\(\)/);
+    expect(table?.[1]).not.toMatch(/\bupdated_at\b/);
   });
 
   it("stores delta as a bigint column", () => {

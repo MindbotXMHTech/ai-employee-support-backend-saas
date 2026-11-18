@@ -51,12 +51,14 @@ begin
   end if;
 
   if decision <> 'exhausted' then
+    perform pg_catalog.set_config('app.ai_session_direct_op', 'consume', true);
     update public.tenant_ai_session_quota q
     set
       base_used = current_row.base_used,
       topup_balance = current_row.topup_balance,
       topup_used = current_row.topup_used
     where q.tenant_id = consume_ai_session.tenant_id;
+    perform pg_catalog.set_config('app.ai_session_direct_op', '', true);
   end if;
 
   outcome := decision;
@@ -115,12 +117,106 @@ left join public.audit_logs a
   and a.tenant_id = o.tenant_id
   and a.metadata ->> 'event_id' = o.event_id;
 
-insert into public.ai_session_events
-  (event_id, tenant_id, op, outcome, amount, delta, base_limit, base_used, topup_balance, topup_used, created_at)
-select c.event_id, c.tenant_id, 'consume', 'applied', null, -1,
-  coalesce(q.base_limit, 0), coalesce(q.base_used, 0), coalesce(q.topup_balance, 0), 0, c.applied_at
-from public.processed_ai_session_consumes c
-left join public.tenant_ai_session_quota q on q.tenant_id = c.tenant_id;
+-- A consume claim stored only the event and the time. Replay it against the partner
+-- snapshots already copied above, in call order, so the row shows the balance after
+-- that spend. The walk must end on the quota row. A miss raises instead of copying
+-- today's counters onto every old spend.
+create function pg_temp.finish_ai_session_replay(
+  p_tenant uuid,
+  p_limit integer,
+  p_used integer,
+  p_topup integer,
+  p_topup_used integer
+)
+returns void
+language plpgsql
+as $$
+declare
+  q record;
+begin
+  select s.base_limit, s.base_used, s.topup_balance
+  into q
+  from public.tenant_ai_session_quota s
+  where s.tenant_id = p_tenant;
+
+  if not found
+     or q.base_limit is distinct from p_limit
+     or q.base_used is distinct from p_used
+     or q.topup_balance is distinct from p_topup then
+    raise exception 'ai_session backfill for tenant % does not match the quota row', p_tenant;
+  end if;
+
+  update public.tenant_ai_session_quota
+  set topup_used = p_topup_used
+  where tenant_id = p_tenant
+    and topup_used is distinct from p_topup_used;
+end;
+$$;
+
+do $$
+declare
+  r record;
+  v_tenant uuid := null;
+  v_limit integer := 0;
+  v_used integer := 0;
+  v_topup integer := 0;
+  v_topup_used integer := 0;
+begin
+  for r in
+    select steps.*
+    from (
+      select e.tenant_id, e.created_at as at, 'partner'::text as kind,
+             e.id, e.event_id, e.base_limit, e.base_used, e.topup_balance
+      from public.ai_session_events e
+      union all
+      select c.tenant_id, c.applied_at, 'consume',
+             null::uuid, c.event_id, null::integer, null::integer, null::integer
+      from public.processed_ai_session_consumes c
+    ) steps
+    order by tenant_id, at, case kind when 'partner' then 0 else 1 end, event_id
+  loop
+    if v_tenant is distinct from r.tenant_id then
+      if v_tenant is not null then
+        perform pg_temp.finish_ai_session_replay(v_tenant, v_limit, v_used, v_topup, v_topup_used);
+      end if;
+      v_tenant := r.tenant_id;
+      v_limit := 0;
+      v_used := 0;
+      v_topup := 0;
+      v_topup_used := 0;
+    end if;
+
+    if r.kind = 'partner' then
+      v_limit := r.base_limit;
+      v_used := r.base_used;
+      v_topup := r.topup_balance;
+      update public.ai_session_events
+      set topup_used = v_topup_used
+      where id = r.id
+        and topup_used is distinct from v_topup_used;
+    elsif v_used < v_limit then
+      v_used := v_used + 1;
+      insert into public.ai_session_events
+        (event_id, tenant_id, op, outcome, amount, delta, base_limit, base_used, topup_balance, topup_used, created_at)
+      values
+        (r.event_id, r.tenant_id, 'consume', 'applied', null, -1, v_limit, v_used, v_topup, v_topup_used, r.at);
+    elsif v_topup > 0 then
+      v_topup := v_topup - 1;
+      v_topup_used := v_topup_used + 1;
+      insert into public.ai_session_events
+        (event_id, tenant_id, op, outcome, amount, delta, base_limit, base_used, topup_balance, topup_used, created_at)
+      values
+        (r.event_id, r.tenant_id, 'consume', 'applied', null, -1, v_limit, v_used, v_topup, v_topup_used, r.at);
+    else
+      raise exception 'ai_session backfill consume % has no balance', r.event_id;
+    end if;
+  end loop;
+
+  if v_tenant is not null then
+    perform pg_temp.finish_ai_session_replay(v_tenant, v_limit, v_used, v_topup, v_topup_used);
+  end if;
+end;
+$$;
 
 drop table public.processed_partner_events;
 drop table public.processed_ai_session_consumes;
@@ -156,6 +252,9 @@ declare
 begin
   if p_event_id is null or btrim(p_event_id) = '' then
     raise exception 'event_id is required' using errcode = '22023';
+  end if;
+  if p_op is null or p_op not in ('set_base', 'add_topup', 'reset_base') then
+    raise exception 'op must be set_base, add_topup, or reset_base' using errcode = '22023';
   end if;
 
   select c.tenant_id
@@ -439,6 +538,127 @@ grant execute on function public.consume_ai_session_event(text, text) to service
 -- upsert_ai_session_quota) still leaves a history row, under a generated event_id.
 -- The logging functions set app.ai_session_event_logged for the transaction while they
 -- change the quota, so they are not recorded twice.
+-- The row image of reset_base matches set_base whenever base_used does not fall.
+-- Each function names its op around the statement that writes the quota row.
+-- The bodies stay under their original names. A rename breaks parameter references
+-- such as set_ai_session_base.tenant_id.
+create or replace function public.set_ai_session_base(tenant_id uuid, new_base_limit integer)
+returns table (
+  base_limit integer,
+  base_used integer,
+  topup_balance integer,
+  updated_at timestamptz
+)
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+begin
+  if set_ai_session_base.tenant_id is null then
+    raise exception 'tenant_id is required' using errcode = '22023';
+  end if;
+  if set_ai_session_base.new_base_limit is null or set_ai_session_base.new_base_limit < 0 then
+    raise exception 'base_limit must be >= 0' using errcode = '22023';
+  end if;
+
+  perform pg_catalog.set_config('app.ai_session_direct_op', 'set_base', true);
+  insert into public.tenant_ai_session_quota as q (tenant_id, base_limit)
+  values (set_ai_session_base.tenant_id, set_ai_session_base.new_base_limit)
+  on conflict on constraint tenant_ai_session_quota_pkey do update
+  set base_limit = excluded.base_limit
+  where q.base_limit is distinct from excluded.base_limit;
+  perform pg_catalog.set_config('app.ai_session_direct_op', '', true);
+
+  return query
+  select q.base_limit, q.base_used, q.topup_balance, q.updated_at
+  from public.tenant_ai_session_quota q
+  where q.tenant_id = set_ai_session_base.tenant_id;
+end;
+$$;
+
+create or replace function public.add_ai_session_topup(tenant_id uuid, amount integer)
+returns table (
+  base_limit integer,
+  base_used integer,
+  topup_balance integer,
+  updated_at timestamptz
+)
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+begin
+  if add_ai_session_topup.tenant_id is null then
+    raise exception 'tenant_id is required' using errcode = '22023';
+  end if;
+  if add_ai_session_topup.amount is null or add_ai_session_topup.amount < 1 then
+    raise exception 'topup amount must be >= 1' using errcode = '22023';
+  end if;
+
+  perform pg_catalog.set_config('app.ai_session_direct_op', 'add_topup', true);
+  insert into public.tenant_ai_session_quota as q (tenant_id, topup_balance)
+  values (add_ai_session_topup.tenant_id, add_ai_session_topup.amount)
+  on conflict on constraint tenant_ai_session_quota_pkey do update
+  set topup_balance = q.topup_balance + excluded.topup_balance;
+  perform pg_catalog.set_config('app.ai_session_direct_op', '', true);
+
+  return query
+  select q.base_limit, q.base_used, q.topup_balance, q.updated_at
+  from public.tenant_ai_session_quota q
+  where q.tenant_id = add_ai_session_topup.tenant_id;
+end;
+$$;
+
+create or replace function public.reset_ai_session_base(tenant_id uuid, new_base_limit integer default null)
+returns table (
+  base_limit integer,
+  base_used integer,
+  topup_balance integer,
+  updated_at timestamptz
+)
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+begin
+  if reset_ai_session_base.tenant_id is null then
+    raise exception 'tenant_id is required' using errcode = '22023';
+  end if;
+  if reset_ai_session_base.new_base_limit is not null and reset_ai_session_base.new_base_limit < 0 then
+    raise exception 'base_limit must be >= 0' using errcode = '22023';
+  end if;
+
+  perform pg_catalog.set_config('app.ai_session_direct_op', 'reset_base', true);
+  insert into public.tenant_ai_session_quota as q (tenant_id, base_limit, base_used)
+  values (
+    reset_ai_session_base.tenant_id,
+    coalesce(reset_ai_session_base.new_base_limit, 0),
+    0
+  )
+  on conflict on constraint tenant_ai_session_quota_pkey do update
+  set
+    base_used = 0,
+    base_limit = case
+      when reset_ai_session_base.new_base_limit is null then q.base_limit
+      else reset_ai_session_base.new_base_limit
+    end
+  where q.base_used <> 0
+     or (
+       reset_ai_session_base.new_base_limit is not null
+       and q.base_limit is distinct from reset_ai_session_base.new_base_limit
+     );
+  perform pg_catalog.set_config('app.ai_session_direct_op', '', true);
+
+  return query
+  select q.base_limit, q.base_used, q.topup_balance, q.updated_at
+  from public.tenant_ai_session_quota q
+  where q.tenant_id = reset_ai_session_base.tenant_id;
+end;
+$$;
+
 create or replace function private.log_direct_ai_session_change()
 returns trigger
 language plpgsql
@@ -447,12 +667,16 @@ set search_path = ''
 as $$
 declare
   v_op text;
+  v_named text;
 begin
   if coalesce(pg_catalog.current_setting('app.ai_session_event_logged', true), '') <> '' then
     return new;
   end if;
 
-  if tg_op = 'INSERT' then
+  v_named := coalesce(pg_catalog.current_setting('app.ai_session_direct_op', true), '');
+  if v_named in ('set_base', 'add_topup', 'reset_base', 'consume') then
+    v_op := v_named;
+  elsif tg_op = 'INSERT' then
     v_op := case
       when new.topup_balance > 0 then 'add_topup'
       when new.base_limit > 0 then 'set_base'
