@@ -533,11 +533,11 @@ $$;
 revoke all on function public.consume_ai_session_event(text, text) from public, anon, authenticated;
 grant execute on function public.consume_ai_session_event(text, text) to service_role;
 
--- A quota change made outside the two logging functions above (a direct call to
--- consume_ai_session, set_ai_session_base, add_ai_session_topup, reset_ai_session_base, or
--- upsert_ai_session_quota) still leaves a history row, under a generated event_id.
--- The logging functions set app.ai_session_event_logged for the transaction while they
--- change the quota, so they are not recorded twice.
+-- A direct write that changes a counter leaves a history row under a generated event_id.
+-- consume_ai_session, set_ai_session_base, add_ai_session_topup, and reset_ai_session_base
+-- name that op. upsert_ai_session_quota inserts a zero row or changes nothing, so it does not.
+-- The partner and chat functions set app.ai_session_event_logged while they change the quota,
+-- so they are not recorded twice.
 -- The row image of reset_base matches set_base whenever base_used does not fall.
 -- Each function names its op around the statement that writes the quota row.
 -- The bodies stay under their original names. A rename breaks parameter references
