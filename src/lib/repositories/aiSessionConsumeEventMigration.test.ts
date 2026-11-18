@@ -4,10 +4,9 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { AI_SESSION_CONSUME_EVENT_OUTCOMES } from "@/lib/domain/aiSessionQuota";
 
-const migrationPath = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "../../../supabase/migrations/0010_consume_ai_session_event.sql",
-);
+const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), "../../../supabase/migrations");
+const domainPath = join(migrationsDir, "0010_consume_ai_session_event.sql");
+const migrationPath = join(migrationsDir, "0011_ai_session_events.sql");
 
 function stripComments(sql: string): string {
   return sql.replace(/--.*$/gm, "");
@@ -17,14 +16,15 @@ function quotedValues(list: string | undefined): string[] {
   return [...(list ?? "").matchAll(/'([a-z_]+)'/g)].map((item) => item[1]);
 }
 
-describe("0010_consume_ai_session_event", () => {
+describe("consume_ai_session_event in 0011_ai_session_events", () => {
+  const domainSql = stripComments(readFileSync(domainPath, "utf8"));
   const sql = stripComments(readFileSync(migrationPath, "utf8"));
   const lower = sql.toLowerCase();
   const fnStart = lower.indexOf("create or replace function public.consume_ai_session_event");
   const fn = lower.slice(fnStart);
 
   it("keeps the outcome domain in step with AI_SESSION_CONSUME_EVENT_OUTCOMES", () => {
-    const match = sql.match(
+    const match = domainSql.match(
       /create domain public\.ai_session_consume_event_outcome[\s\S]*?check \(value in \(([^)]+)\)\)/i,
     );
     expect(match).not.toBeNull();
@@ -40,37 +40,22 @@ describe("0010_consume_ai_session_event", () => {
     expect(lookup).toBeGreaterThan(raise);
   });
 
-  it("returns company_code_not_found before claiming the event", () => {
+  it("returns company_code_not_found before taking the event lock", () => {
     const missing = fn.indexOf("outcome := 'company_code_not_found'");
-    const claim = fn.indexOf("insert into public.processed_ai_session_consumes");
+    const lock = fn.indexOf("pg_advisory_xact_lock");
 
     expect(missing).toBeGreaterThan(-1);
-    expect(claim).toBeGreaterThan(missing);
+    expect(lock).toBeGreaterThan(missing);
   });
 
-  it("returns event_id_conflict when the stored event belongs to another tenant", () => {
-    const distinct = fn.indexOf("v_stored.tenant_id is distinct from v_tenant");
+  it("returns event_id_conflict for another tenant or op before any spend", () => {
+    const distinct = fn.indexOf("v_stored.tenant_id <> v_tenant or v_stored.op <> 'consume'");
     const conflict = fn.indexOf("outcome := 'event_id_conflict'");
     const spend = fn.indexOf("public.consume_ai_session(");
 
     expect(distinct).toBeGreaterThan(-1);
     expect(conflict).toBeGreaterThan(distinct);
     expect(spend).toBeGreaterThan(conflict);
-  });
-
-  it("claims the event before consume_ai_session", () => {
-    const claim = fn.indexOf("insert into public.processed_ai_session_consumes");
-    const spend = fn.indexOf("public.consume_ai_session(");
-    expect(claim).toBeGreaterThan(-1);
-    expect(spend).toBeGreaterThan(claim);
-  });
-
-  it("releases the claim after a spend that does not happen", () => {
-    const spend = fn.indexOf("public.consume_ai_session(");
-    const release = fn.indexOf("delete from public.processed_ai_session_consumes");
-    expect(spend).toBeGreaterThan(-1);
-    expect(release).toBeGreaterThan(spend);
-    expect(fn).toContain("outcome = 'not_provisioned' or outcome = 'exhausted'");
   });
 
   it("returns a replay without calling consume_ai_session", () => {
@@ -80,10 +65,23 @@ describe("0010_consume_ai_session_event", () => {
     expect(replay).toBeLessThan(spend);
   });
 
-  it("revokes table rights from service_role and grants execute only on the function", () => {
-    expect(lower).toMatch(
-      /revoke\s+all\s+on\s+table\s+public\.processed_ai_session_consumes\s+from\s+[^;]*\bservice_role\b/,
-    );
+  it("writes a history row with its outcome for every resolved call", () => {
+    for (const outcome of ["applied", "replayed", "exhausted", "not_provisioned", "event_id_conflict"]) {
+      expect(fn).toMatch(new RegExp(`values \\(p_event_id, v_tenant, 'consume', '${outcome}'`));
+    }
+  });
+
+  it("lets only an applied row decide replay or conflict", () => {
+    const lookup = fn.indexOf("from public.ai_session_events e");
+    expect(fn.indexOf("and e.outcome = 'applied'", lookup)).toBeGreaterThan(lookup);
+  });
+
+  it("moves the old claim table into the history and drops it", () => {
+    expect(lower).toContain("'consume'");
+    expect(lower).toContain("drop table public.processed_ai_session_consumes");
+  });
+
+  it("grants execute only on the function", () => {
     expect(lower).toMatch(
       /grant execute on function public\.consume_ai_session_event\(text, text\) to service_role/,
     );
