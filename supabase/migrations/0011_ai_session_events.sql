@@ -118,41 +118,9 @@ left join public.audit_logs a
   and a.metadata ->> 'event_id' = o.event_id;
 
 -- A consume claim stored only the event and the time. Replay it against the partner
--- snapshots already copied above, in call order, so the row shows the balance after
--- that spend. The walk must end on the quota row. A miss raises instead of copying
--- today's counters onto every old spend.
-create function pg_temp.finish_ai_session_replay(
-  p_tenant uuid,
-  p_limit integer,
-  p_used integer,
-  p_topup integer,
-  p_topup_used integer
-)
-returns void
-language plpgsql
-as $$
-declare
-  q record;
-begin
-  select s.base_limit, s.base_used, s.topup_balance
-  into q
-  from public.tenant_ai_session_quota s
-  where s.tenant_id = p_tenant;
-
-  if not found
-     or q.base_limit is distinct from p_limit
-     or q.base_used is distinct from p_used
-     or q.topup_balance is distinct from p_topup then
-    raise exception 'ai_session backfill for tenant % does not match the quota row', p_tenant;
-  end if;
-
-  update public.tenant_ai_session_quota
-  set topup_used = p_topup_used
-  where tenant_id = p_tenant
-    and topup_used is distinct from p_topup_used;
-end;
-$$;
-
+-- snapshots already copied above. A spend the walk cannot fund still keeps its event_id,
+-- with delta 0 and the counters unchanged, so a later retry does not spend again and the
+-- row does not invent a balance the old tables did not store.
 do $$
 declare
   r record;
@@ -176,9 +144,6 @@ begin
     order by tenant_id, at, case kind when 'partner' then 0 else 1 end, event_id
   loop
     if v_tenant is distinct from r.tenant_id then
-      if v_tenant is not null then
-        perform pg_temp.finish_ai_session_replay(v_tenant, v_limit, v_used, v_topup, v_topup_used);
-      end if;
       v_tenant := r.tenant_id;
       v_limit := 0;
       v_used := 0;
@@ -208,13 +173,12 @@ begin
       values
         (r.event_id, r.tenant_id, 'consume', 'applied', null, -1, v_limit, v_used, v_topup, v_topup_used, r.at);
     else
-      raise exception 'ai_session backfill consume % has no balance', r.event_id;
+      insert into public.ai_session_events
+        (event_id, tenant_id, op, outcome, amount, delta, base_limit, base_used, topup_balance, topup_used, created_at)
+      values
+        (r.event_id, r.tenant_id, 'consume', 'applied', null, 0, v_limit, v_used, v_topup, v_topup_used, r.at);
     end if;
   end loop;
-
-  if v_tenant is not null then
-    perform pg_temp.finish_ai_session_replay(v_tenant, v_limit, v_used, v_topup, v_topup_used);
-  end if;
 end;
 $$;
 
