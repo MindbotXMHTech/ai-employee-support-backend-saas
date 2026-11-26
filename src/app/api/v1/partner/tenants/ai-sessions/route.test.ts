@@ -22,7 +22,10 @@ describe("POST /api/v1/partner/tenants/ai-sessions", () => {
       const actual = await importOriginal<typeof import("@/lib/services/partnerAiSessionService")>();
       return { ...actual, applyPartnerAiSessionOp };
     });
-    vi.doMock("@/lib/api/partnerRateLimit", () => ({ checkPartnerProvisionRateLimit }));
+    vi.doMock("@/lib/api/partnerRateLimit", () => ({
+      checkPartnerProvisionRateLimit,
+      readPartnerRateLimitAddress: () => null,
+    }));
     return import("./route");
   }
 
