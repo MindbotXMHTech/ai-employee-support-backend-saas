@@ -219,9 +219,7 @@ Notes:
 
 ### Deployment (Vercel / production)
 
-GitHub Actions (`.github/workflows/ci.yml`) runs lint, unit tests, and DB integration tests on every pull request to `main`. Pull requests do not deploy. A push to `main` deploys to Vercel production after lint, unit tests, and DB integration tests pass. The deploy job does not call Vercel when a newer commit is already on `main`.
-
-The deploy job reads `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID` from the GitHub `production` environment. It stops before calling Vercel when any of those secrets is missing.
+GitHub Actions (`.github/workflows/ci.yml`) runs lint, unit tests, and DB integration tests on pull requests to `main` and on pushes to `main`. The Vercel Git integration deploys `main` to production. This workflow does not call the Vercel CLI.
 
 Set server-only secrets in the hosting provider (e.g. Vercel → Project → Settings → Environment Variables):
 
