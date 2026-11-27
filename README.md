@@ -219,7 +219,14 @@ Notes:
 
 ### Deployment (Vercel / production)
 
-GitHub Actions (`.github/workflows/ci.yml`) runs lint, unit tests, and DB integration tests on pull requests to `main` and on pushes to `main`. The Vercel Git integration deploys `main` to production. This workflow does not call the Vercel CLI.
+GitHub Actions (`.github/workflows/ci.yml`) runs lint, unit tests, and DB integration tests on pull requests to `main` and on pushes to `main`. The Vercel Git integration builds `main` when that branch is pushed. This workflow does not call the Vercel CLI.
+
+Custom production domains stay on the previous deployment until both GitHub checks pass. In the Vercel project, turn on automatic aliasing for the production environment. Open Deployment Checks. Choose Add Checks. Choose GitHub. Select these job names.
+
+- Lint and unit tests
+- DB integration tests
+
+Vercel still starts the production build on push. It assigns custom production domains only after both checks pass. A failed check leaves the previous custom domains in place. Renaming either job means selecting the new name in Deployment Checks again. See [Vercel Deployment Checks](https://vercel.com/docs/deployment-checks).
 
 Set server-only secrets in the hosting provider (e.g. Vercel → Project → Settings → Environment Variables):
 
