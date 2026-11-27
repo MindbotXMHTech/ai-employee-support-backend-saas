@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { checkPartnerProvisionRateLimit } from "@/lib/api/partnerRateLimit";
+import { checkPartnerProvisionRateLimit, readPartnerRateLimitAddress } from "@/lib/api/partnerRateLimit";
 import { TENANT_PROVISION_SECRET_HEADER, validateTenantProvisionSecret } from "@/lib/api/tenantProvisionAuth";
 import { env } from "@/lib/env";
 import { PartnerEventIdConflictError, applyPartnerAiSessionOp } from "@/lib/services/partnerAiSessionService";
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
   }
 
   const rateLimit = checkPartnerProvisionRateLimit({
-    ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? request.headers.get("x-real-ip"),
+    ip: readPartnerRateLimitAddress(request.headers),
     companyCode: parsed.data.company_code,
   });
   if (!rateLimit.ok) {

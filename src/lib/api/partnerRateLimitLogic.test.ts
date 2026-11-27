@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildPartnerRateLimitKeys,
   consumeRateLimit,
+  partnerRateLimitAddress,
   PARTNER_RATE_LIMIT_MAX_PER_COMPANY_CODE,
   PARTNER_RATE_LIMIT_MAX_PER_IP,
   PARTNER_RATE_LIMIT_WINDOW_MS,
@@ -51,6 +52,34 @@ describe("consumeRateLimit", () => {
     if (!result.ok) {
       expect(result.retryAfterSec).toBe(4);
     }
+  });
+});
+
+describe("partnerRateLimitAddress", () => {
+  const clientHeaders = {
+    "x-forwarded-for": "203.0.113.1, 10.1.1.1",
+    "x-real-ip": "198.51.100.8",
+    "x-vercel-forwarded-for": " 203.0.113.10 , 10.0.0.1 ",
+  };
+
+  it("returns null for every client forwarding header when the process is not Vercel", () => {
+    expect(partnerRateLimitAddress(new Headers(clientHeaders), "untrusted")).toBeNull();
+  });
+
+  it("uses the first platform hop on Vercel and ignores X-Forwarded-For and X-Real-IP", () => {
+    expect(partnerRateLimitAddress(new Headers(clientHeaders), "vercel")).toBe("203.0.113.10");
+  });
+
+  it("returns null on Vercel when the platform header is absent", () => {
+    expect(
+      partnerRateLimitAddress(
+        new Headers({
+          "x-forwarded-for": "203.0.113.1",
+          "x-real-ip": "198.51.100.8",
+        }),
+        "vercel",
+      ),
+    ).toBeNull();
   });
 });
 

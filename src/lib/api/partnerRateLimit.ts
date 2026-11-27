@@ -6,6 +6,7 @@
 import {
   buildPartnerRateLimitKeys,
   consumeRateLimit,
+  partnerRateLimitAddress,
   PARTNER_RATE_LIMIT_MAX_PER_COMPANY_CODE,
   PARTNER_RATE_LIMIT_MAX_PER_IP,
   PARTNER_RATE_LIMIT_WINDOW_MS,
@@ -13,6 +14,12 @@ import {
 } from "@/lib/api/partnerRateLimitLogic";
 
 const buckets = new Map<string, RateLimitBucket>();
+
+export function readPartnerRateLimitAddress(headers: {
+  get(name: string): string | null;
+}): string | null {
+  return partnerRateLimitAddress(headers, process.env.VERCEL === "1" ? "vercel" : "untrusted");
+}
 
 export function checkPartnerProvisionRateLimit(input: {
   ip: string | null;

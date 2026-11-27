@@ -28,6 +28,19 @@ export function consumeRateLimit(
   };
 }
 
+export type PartnerAddressPlatform = "vercel" | "untrusted";
+
+const PLATFORM_ADDRESS_HEADER = "x-vercel-forwarded-for";
+
+export function partnerRateLimitAddress(
+  headers: { get(name: string): string | null },
+  platform: PartnerAddressPlatform,
+): string | null {
+  if (platform !== "vercel") return null;
+  const first = headers.get(PLATFORM_ADDRESS_HEADER)?.split(",")[0]?.trim() ?? "";
+  return first || null;
+}
+
 export function buildPartnerRateLimitKeys(input: {
   ip: string | null | undefined;
   companyCode?: string | null;
