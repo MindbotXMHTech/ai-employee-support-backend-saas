@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { NextRequest } from "next/server";
 import { jsonRequest } from "@/test/mockNextRequest";
 import { PARTNER_RATE_LIMIT_MAX_PER_COMPANY_CODE, PARTNER_RATE_LIMIT_MAX_PER_IP } from "@/lib/api/partnerRateLimitLogic";
 
@@ -10,7 +11,7 @@ const applyPartnerAiSessionOp = vi.hoisted(() => vi.fn());
 const secret = "partner-provision-secret-value-32b!!";
 const headerName = "x-tenant-provision-secret";
 
-type Post = (request: Request) => Promise<Response>;
+type Post = (request: NextRequest) => Promise<Response>;
 
 function code(index: number): string {
   return `CODE${String(index).padStart(4, "0")}`;
